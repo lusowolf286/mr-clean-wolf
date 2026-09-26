@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Mr Clean Wolf — Área de cliente</title>
+<meta name="theme-color" content="#121212">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Clean Wolf">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="../icons/cliente-apple-touch-icon.png">
+<link rel="icon" type="image/png" href="../icons/cliente-192.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Manrope:wght@400;500;600;700&display=swap">
+<script src="../config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
+<style>
+:root{--bg:#121212;--surface:#1D1C1B;--surface2:#262422;--line:#33302D;--line2:#2A2725;--ink:#F3ECE3;--muted:#A99F94;--gold:#E9AC3C;--copper:#F0BE90;--ruby:#6B0F1F;--ruby2:#9B1B30;--rubydeep:#420A14;--pos:#7CCB9F;--neg:#F28B7D;
+  color-scheme:dark;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 Manrope,system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
+button,input{font:inherit;color:inherit}
+input{font-size:16px}
+:focus-visible{outline:2px solid var(--copper);outline-offset:2px}
+[hidden]{display:none!important}
+.wrap{max-width:720px;margin:0 auto;padding:0 max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+.top{display:flex;align-items:center;gap:10px;padding:14px 0 10px}
+.top img{width:52px;height:45px;object-fit:contain}
+.wm{line-height:1;flex:1}
+.wm small{display:block;font:600 10px Syne,sans-serif;letter-spacing:.3em;color:var(--gold)}
+.wm span{font:800 19px Syne,sans-serif}
+.stripe{display:flex;flex-direction:column;gap:3px;margin:0 calc(-1 * max(16px,env(safe-area-inset-left,0px))) 18px}
+.stripe i{height:4px;background:var(--ruby)}.stripe b{height:1px;background:var(--gold)}
+h1{font:700 28px/1.15 Syne,sans-serif;margin:6px 0 4px}
+h2{font:700 16px Syne,sans-serif;letter-spacing:.03em;margin:26px 0 10px}
+.sub{color:var(--muted)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px;display:grid;gap:8px}
+.list{display:grid;gap:10px}
+.pill{font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;white-space:nowrap}
+.p-ag{background:#2B2413;color:var(--gold)}.p-tr{background:#123024;color:var(--pos)}.p-en{background:#262422;color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+.chip{font-size:12px;font-weight:600;padding:2px 8px;border-radius:6px;border:1px solid #3A3632;color:var(--muted)}
+.row{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.date{font-weight:700;font-variant-numeric:tabular-nums}
+.val{margin-left:auto;font-weight:600;font-variant-numeric:tabular-nums;color:var(--copper)}
+.notes{white-space:pre-wrap;font-size:14.5px}
+.ph{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
+.ph button{padding:0;border:0;background:var(--surface2);border-radius:12px;overflow:hidden;aspect-ratio:1;cursor:zoom-in}
+.ph img{width:100%;height:100%;object-fit:cover;display:block}
+.cars{display:flex;gap:8px;flex-wrap:wrap}
+.car{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 14px}
+.car b{display:block}.car span{color:var(--muted);font-size:13px;letter-spacing:.06em}
+.kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:16px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:12px 14px}
+.kpi.hero{background:var(--rubydeep);border-color:var(--ruby)}
+.kpi .l{font-size:11.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.kpi.hero .l{color:#E3C9C4}
+.kpi .v{font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}
+.btn{min-height:48px;border-radius:12px;border:1px solid var(--ruby2);background:var(--ruby);color:#fff;font-weight:700;padding:0 18px;cursor:pointer;width:100%}
+.btn.ghost{background:var(--surface2);border-color:#3A3632;color:var(--ink)}
+.fld{display:grid;gap:6px}
+.fld span{font-size:13px;color:var(--muted)}
+.fld input{min-height:48px;border:1px solid #3A3632;background:var(--surface2);border-radius:12px;padding:0 14px;width:100%}
+.login{max-width:380px;margin:8vh auto 0;display:grid;gap:16px}
+.msg{font-size:13.5px;color:var(--muted);margin:0}.msg.err{color:var(--neg)}
+.foot{display:flex;gap:16px;justify-content:center;margin-top:34px;font-size:13.5px}
+.foot a,.foot button{color:var(--copper);background:none;border:0;padding:12px 4px;cursor:pointer;text-decoration:underline}
+.banner{background:#34080F;border:1px solid var(--ruby);color:#E3C9C4;border-radius:12px;padding:10px 12px;font-size:13.5px;margin-top:10px}
+.viewer{position:fixed;inset:0;z-index:30;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;padding:env(safe-area-inset-top,0px) 12px env(safe-area-inset-bottom,0px)}
+.viewer img{max-width:100%;max-height:88vh;border-radius:12px}
+.viewer button{position:absolute;top:calc(12px + env(safe-area-inset-top,0px));right:12px;width:48px;height:48px;border-radius:12px;border:0;background:rgba(255,255,255,.12);color:#fff;font-size:24px;cursor:pointer}
+.empty{color:var(--muted);padding:12px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top"><img src="../icons/wolf.png" alt=""><div class="wm"><small>MR</small><span>CLEAN WOLF</span></div></header>
+  <div class="stripe" aria-hidden="true"><i></i><b></b></div>
+  <main id="app"><p class="sub">A carregar…</p></main>
+</div>
+<div id="viewer" class="viewer" hidden><button type="button" id="v-close" aria-label="Fechar">×</button><img id="v-img" alt="Fotografia do serviço"></div>
+
+<script>
+(() => {
+"use strict";
+const CFG = window.CW_CONFIG || {};
+const ok = CFG.supabaseUrl && !/XXXX/.test(CFG.supabaseUrl) && CFG.supabaseAnonKey && !/COLE/.test(CFG.supabaseAnonKey);
+const sb = ok ? supabase.createClient(CFG.supabaseUrl, CFG.supabaseAnonKey, { auth:{ persistSession:true, autoRefreshToken:true, detectSessionInUrl:false } }) : null;
+const $ = s => document.querySelector(s);
+const app = $("#app");
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const MES = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+const fmtD = s => s ? `${+s.slice(8,10)} de ${MES[+s.slice(5,7)-1]} de ${s.slice(0,4)}` : "";
+const eur = v => new Intl.NumberFormat("pt-PT",{style:"currency",currency:"EUR"}).format(v||0);
+const EST = { agendado:["Agendado","p-ag"], tratamento:["Em tratamento","p-tr"], entregue:["Entregue","p-en"] };
+const CACHE = "cw-cliente-cache";
+
+function login(email, msg, err){
+  app.innerHTML = `<div class="login"><h1>Área de cliente</h1>
+    <p class="sub" style="margin:0">Consulte o histórico dos serviços feitos à sua viatura.</p>
+    <label class="fld"><span>E-mail</span><input id="email" type="email" autocomplete="email" value="${esc(email||"")}"></label>
+    <button class="btn" id="send">Receber código de acesso</button>
+    <p class="msg ${err?"err":""}">${esc(msg||"Use o e-mail que deu ao Mr Clean Wolf. Recebe um código de 6 dígitos.")}</p></div>`;
+  const go = async () => {
+    const e = $("#email").value.trim().toLowerCase(); if (!e) return;
+    $("#send").disabled = true;
+    const { error } = await sb.auth.signInWithOtp({ email:e, options:{ shouldCreateUser:true } });
+    if (error) login(e, "Não foi possível enviar o código. Tente de novo dentro de alguns minutos.", true); else code(e);
+  };
+  $("#send").onclick = go; $("#email").onkeydown = e => { if (e.key === "Enter") go(); };
+}
+function code(email, err){
+  app.innerHTML = `<div class="login"><h1>Código de acesso</h1>
+    <p class="sub" style="margin:0">Enviámos um código para ${esc(email)}. Pode demorar um minuto a chegar.</p>
+    <label class="fld"><span>Código</span><input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" style="letter-spacing:.3em;font-size:22px;text-align:center"></label>
+    <button class="btn" id="ok">Entrar</button><button class="btn ghost" id="back">Usar outro e-mail</button>
+    ${err?`<p class="msg err">Código inválido ou expirado.</p>`:""}</div>`;
+  const go = async () => {
+    const token = $("#code").value.trim(); if (!token) return;
+    const { error } = await sb.auth.verifyOtp({ email, token, type:"email" });
+    if (error) code(email, true); else load();
+  };
+  $("#ok").onclick = go; $("#code").onkeydown = e => { if (e.key === "Enter") go(); };
+  $("#back").onclick = () => login(email); $("#code").focus();
+}
+
+async function load(){
+  let rows = null, offline = false;
+  try {
+    const { data, error } = await sb.from("portal").select("nome,dados,updated_at");
+    if (error) throw error;
+    rows = data; try { localStorage.setItem(CACHE, JSON.stringify(rows)); } catch(e){}
+  } catch(e){
+    try { rows = JSON.parse(localStorage.getItem(CACHE) || "null"); } catch(x){}
+    offline = true;
+  }
+  render(rows || [], offline);
+}
+
+function render(rows, offline){
+  if (!rows.length){
+    app.innerHTML = `<h1>Sem histórico</h1><p class="sub">Este e-mail não está associado a nenhuma ficha de cliente.</p>${footer()}`;
+    wireFooter(); return;
+  }
+  const nome = rows[0].nome || "";
+  const svc = rows.flatMap(r => (r.dados && r.dados.servicos) || []).sort((a,b) => (b.d+(b.hora||"")).localeCompare(a.d+(a.hora||"")));
+  const cars = [...new Map(rows.flatMap(r => (r.dados && r.dados.viaturas) || []).map(v => [v.matricula||v.viatura, v])).values()];
+  const open = svc.filter(s => s.estado !== "entregue").reverse();
+  const done = svc.filter(s => s.estado === "entregue");
+  const since = done.length ? done[done.length-1].d.slice(0,4) : "";
+  const upd = rows.map(r => r.dados && r.dados.atualizado).filter(Boolean).sort().pop();
+  const entry = s => `<article class="card">
+      <div class="row"><span class="date">${esc(fmtD(s.d))}</span>${s.hora && s.estado!=="entregue"?`<span class="sub">${esc(s.hora)}</span>`:""}<span class="pill ${EST[s.estado]?EST[s.estado][1]:"p-en"}">${EST[s.estado]?EST[s.estado][0]:""}</span>${s.valor?`<span class="val">${eur(s.valor)}</span>`:""}</div>
+      ${s.viatura||s.matricula?`<div class="sub">${esc([s.viatura,s.matricula].filter(Boolean).join(" · "))}</div>`:""}
+      <div class="chips">${(s.servicos||[]).concat(s.extras||[]).map(x=>`<span class="chip">${esc(x)}</span>`).join("")}</div>
+      ${s.notas?`<div class="notes">${esc(s.notas)}</div>`:""}
+      ${(s.fotos||[]).length?`<div class="ph">${s.fotos.map(p=>`<button type="button" data-view="${esc(p)}" aria-label="Ver fotografia"><img data-path="${esc(p)}" alt="Fotografia do serviço"></button>`).join("")}</div>`:""}
+    </article>`;
+  app.innerHTML = `<h1>Olá, ${esc(nome.split(" ")[0])}</h1><p class="sub" style="margin:0">Histórico de serviços${since?` desde ${since}`:""}.</p>
+    ${offline?`<div class="banner">Sem ligação à internet. A mostrar a última informação guardada.</div>`:""}
+    <div class="kpis"><div class="kpi hero"><div class="l">Serviços</div><div class="v">${done.length}</div></div><div class="kpi"><div class="l">Último</div><div class="v" style="font-size:17px">${done[0]?esc(fmtD(done[0].d)):"—"}</div></div></div>
+    ${open.length?`<h2>Marcações em curso</h2><div class="list">${open.map(entry).join("")}</div>`:""}
+    ${cars.length?`<h2>As suas viaturas</h2><div class="cars">${cars.map(v=>`<div class="car"><b>${esc(v.viatura||"Viatura")}</b><span>${esc(v.matricula||"")}</span></div>`).join("")}</div>`:""}
+    <h2>Diário de serviços</h2><div class="list">${done.map(entry).join("") || `<p class="empty">Ainda sem serviços concluídos.</p>`}</div>
+    ${upd?`<p class="sub" style="font-size:12.5px;margin-top:18px">Atualizado a ${esc(fmtD(upd))}.</p>`:""}
+    ${footer()}`;
+  wireFooter(); photos();
+}
+const footer = () => `<div class="foot"><a href="../privacidade.html">Privacidade</a><button type="button" id="logout">Terminar sessão</button></div>`;
+function wireFooter(){ const b = $("#logout"); if (b) b.onclick = async () => { try { localStorage.removeItem(CACHE); } catch(e){} await sb.auth.signOut(); login(); }; }
+
+async function photos(){
+  const imgs = [...document.querySelectorAll("img[data-path]")]; if (!imgs.length) return;
+  const paths = [...new Set(imgs.map(i => i.dataset.path))];
+  try {
+    const { data } = await sb.storage.from("fotos").createSignedUrls(paths, 3600);
+    const m = new Map((data||[]).filter(r => r.signedUrl).map(r => [r.path, r.signedUrl]));
+    for (const i of imgs){ const u = m.get(i.dataset.path); if (u) i.src = u; }
+  } catch(e){}
+}
+app.addEventListener("click", e => {
+  const b = e.target.closest("[data-view]"); if (!b) return;
+  const img = b.querySelector("img"); if (!img || !img.src) return;
+  $("#v-img").src = img.src; $("#viewer").hidden = false; $("#v-close").focus();
+});
+const closeV = () => { $("#viewer").hidden = true; $("#v-img").removeAttribute("src"); };
+$("#v-close").onclick = closeV; $("#viewer").addEventListener("click", e => { if (e.target.id === "viewer") closeV(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeV(); });
+
+(async () => {
+  if (!sb){ app.innerHTML = `<p class="sub">A área de cliente ainda não está configurada.</p>`; return; }
+  const { data:{ session } } = await sb.auth.getSession();
+  if (session) load();
+  else if (!navigator.onLine){ let rows=null; try { rows = JSON.parse(localStorage.getItem(CACHE)||"null"); } catch(e){} if (rows) render(rows, true); else app.innerHTML = `<p class="sub">Sem ligação à internet.</p>`; }
+  else login();
+})();
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+})();
+</script>
+</body>
+</html>
