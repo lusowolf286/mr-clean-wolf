@@ -3,5 +3,6 @@
    NUNCA coloque aqui a chave "service_role". */
 window.CW_CONFIG = {
   supabaseUrl: "https://nsivezaolaugdrwojfun.supabase.co",
-  supabaseAnonKey: "sb_publishable_5TM2ArtrjOgxh8dhkKaYFw_apjCqHWf"
+  supabaseAnonKey: "sb_publishable_5TM2ArtrjOgxh8dhkKaYFw_apjCqHWf",
+  clienteLink: "https://tinyurl.com/2xos4nxs"   // link curto (TinyURL) para a área de cliente
 };

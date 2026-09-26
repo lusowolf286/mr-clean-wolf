@@ -442,6 +442,19 @@ async function boot(){
 let portal=null; const pq=new Set(); let pT=null;
 function queuePortal(name){ if (!portal||!name) return; pq.add(name); clearTimeout(pT); pT=setTimeout(flushPortal,2000); }
 async function flushPortal(){ const names=[...pq]; pq.clear(); for (const n of names){ const c=clientByName(n); if (!c) continue; try { await portal.upsert(portalData(c)); } catch(e){ console.error("portal",e); } } }
+/* ---- envio do acesso à área de cliente por SMS (abre a app Mensagens com o texto preenchido) ---- */
+const CLIENTE_LINK = (window.CW_CONFIG && CW_CONFIG.clienteLink) || "https://tinyurl.com/2xos4nxs";
+function smsNumber(t){ let n=String(t||"").replace(/[^\d+]/g,""); if (n.startsWith("00")) n="+"+n.slice(2); if (/^9\d{8}$/.test(n)) n="+351"+n; return n; }
+async function smsAcesso(c){
+  const num=smsNumber(c.tel);
+  if (num.replace(/\D/g,"").length<9){ toast("Falta o telemóvel do cliente. Use \"Editar dados\"."); return; }
+  if (!c.email){ toast("Falta o e-mail do cliente: é com ele que entra na área de cliente."); return; }
+  if (portal){ try { await portal.upsert(portalData(c)); } catch(e){ console.error("portal",e); } }
+  const nome=String(c.nome||"").trim().split(/\s+/)[0];
+  const body=`Olá ${nome}, já pode consultar o histórico da sua viatura na área de cliente Mr Clean Wolf: ${CLIENTE_LINK}\nEntre com o e-mail ${c.email} e o código que vai receber.`;
+  const ios=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1)||!!(window.Capacitor&&window.Capacitor.getPlatform&&window.Capacitor.getPlatform()==="ios");
+  const a=document.createElement("a"); a.href=`sms:${num}${ios?"&":"?"}body=${encodeURIComponent(body)}`; document.body.appendChild(a); a.click(); setTimeout(()=>a.remove(),1000);
+}
 function portalData(c){
   const svc=list("servicos").filter(r=>r.cli===c.nome).sort(byDateDesc);
   const vias=[...new Map(svc.filter(r=>r.viatura||r.matricula).map(r=>[(r.matricula||r.viatura),{viatura:r.viatura||"",matricula:r.matricula||""}])).values()];
@@ -980,8 +993,9 @@ function openCliente(cid){
       <span class="r-sub">${(r.sv||[]).map(k=>`<span class="chip">${esc(SVK[k]?SVK[k].l:k)}</span>`).join("")}${(r.extras||[]).map(x=>`<span class="chip">${esc(x.nome)}</span>`).join("")}</span>
       ${r.notas?`<span style="font-size:14px;white-space:pre-wrap">${esc(r.notas)}</span>`:""}
       ${(r.fotos||[]).length?`<span class="thumbs">${r.fotos.map(p=>photoImg(p,"")).join("")}</span>`:""}</button>`; }).join("")||`<div class="note">Ainda sem serviços.</div>`}</div>`;
-  openSheet(c.nome, body, `<span class="sp"></span><button class="btn" type="button" id="c-edit">Editar dados</button><button class="btn" type="button" id="sh-cancel">Fechar</button>`, close=>{
+  openSheet(c.nome, body, `<button class="btn" type="button" id="c-sms" title="Enviar por SMS o link de acesso à área de cliente">Enviar acesso por SMS</button><span class="sp"></span><button class="btn" type="button" id="c-edit">Editar dados</button><button class="btn" type="button" id="sh-cancel">Fechar</button>`, close=>{
     $("#sh-cancel").onclick=close; $("#c-edit").onclick=()=>{ close(); editCliente(cid); };
+    $("#c-sms").onclick=()=>smsAcesso(c);
     $("#c-new").onclick=()=>{ close(); editServico(null,{cli:c.nome}); };
     $("#sh-form").addEventListener("click",e=>{ const b=e.target.closest("[data-edit]"); if (!b) return; close(); editServico(b.dataset.edit.split(":")[1]); });
   }, true);

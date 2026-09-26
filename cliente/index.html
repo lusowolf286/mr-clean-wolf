@@ -102,7 +102,8 @@ function login(email, msg, err){
     <p class="sub" style="margin:0">Consulte o histórico dos serviços feitos à sua viatura.</p>
     <label class="fld"><span>E-mail</span><input id="email" type="email" autocomplete="email" value="${esc(email||"")}"></label>
     <button class="btn" id="send">Receber código de acesso</button>
-    <p class="msg ${err?"err":""}">${esc(msg||"Use o e-mail que deu ao Mr Clean Wolf. Recebe um código de 6 dígitos.")}</p></div>`;
+    <p class="msg ${err?"err":""}">${esc(msg||"Use o e-mail que deu ao Mr Clean Wolf. Recebe um código de 6 dígitos.")}</p>
+    <p class="msg">Ao entrar, os seus dados são tratados nos termos da <a href="../privacidade.html">política de privacidade</a>.</p></div>`;
   const go = async () => {
     const e = $("#email").value.trim().toLowerCase(); if (!e) return;
     $("#send").disabled = true;
