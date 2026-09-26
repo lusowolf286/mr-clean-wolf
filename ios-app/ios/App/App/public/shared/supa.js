@@ -60,11 +60,33 @@ function loginUI(){
     stepEmail();
   });
 }
+/* ---------- desbloqueio com Face ID (só na app iOS) ---------- */
+const nativeApp = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+let locking = null, hiddenAt = 0;
+function faceLock(){
+  if (!nativeApp) return Promise.resolve(true);
+  if (locking) return locking;
+  locking = new Promise(resolve => {
+    const el = overlay(`<p style="margin:0;color:#A99F94">A app está bloqueada.</p><button id="cw-unlock" style="${btnCss}">Desbloquear com Face ID</button>`);
+    const tryIt = async () => {
+      try { const r = await window.Capacitor.nativePromise("CWNative", "biometric", { reason:"Desbloquear a gestão Mr Clean Wolf" }); if (r && r.ok){ el.remove(); locking = null; resolve(true); } }
+      catch(e){ console.error(e); }
+    };
+    el.querySelector("#cw-unlock").onclick = tryIt; tryIt();
+  });
+  return locking;
+}
+if (nativeApp) document.addEventListener("visibilitychange", () => {
+  if (document.hidden){ hiddenAt = Date.now(); return; }
+  if (hiddenAt && Date.now() - hiddenAt > 60000 && authP) faceLock();   // bloqueia após 1 minuto fora da app
+});
+
 async function ensureAuth(){
   if (!sb){ overlay(`<p style="margin:0">A app ainda não está ligada à base de dados. Preencha o ficheiro <b>config.js</b> (ver README).</p>`); return null; }
   let { data:{ session } } = await sb.auth.getSession();
   if (!session && !navigator.onLine) return "offline";
   if (!session) session = await loginUI();
+  else await faceLock();
   const { data, error } = await sb.from("admins").select("email").limit(1);
   if (error && navigator.onLine){ overlay(`<p style="margin:0">Não foi possível verificar o acesso: ${esc(error.message)}</p>`); return null; }
   if (!error && (!data || !data.length)){

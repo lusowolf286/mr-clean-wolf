@@ -51,6 +51,8 @@
 	<array>
 		<string>arm64</string>
 	</array>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Para desbloquear a app de gestão sem pedir o código por e-mail.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Para fotografar as viaturas e juntar as fotografias ao diário de serviços.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

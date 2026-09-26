@@ -1,6 +1,7 @@
 import UIKit
 import Capacitor
 import EventKit
+import LocalAuthentication
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -80,7 +81,8 @@ public class CWNativePlugin: CAPPlugin, CAPBridgedPlugin {
     public let jsName = "CWNative"
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "share", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "calendar", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "calendar", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "biometric", returnType: CAPPluginReturnPromise)
     ]
     private let store = EKEventStore()
     private let mapKey = "cw.calendar.uids"
@@ -134,6 +136,17 @@ public class CWNativePlugin: CAPPlugin, CAPBridgedPlugin {
         }
         if #available(iOS 17.0, *) { store.requestFullAccessToEvents { ok, _ in proceed(ok) } }
         else { store.requestAccess(to: .event) { ok, _ in proceed(ok) } }
+    }
+
+    // Desbloqueio com Face ID (ou código do iPhone, se o Face ID falhar)
+    @objc func biometric(_ call: CAPPluginCall) {
+        let ctx = LAContext()
+        ctx.localizedFallbackTitle = "Usar código do iPhone"
+        var err: NSError?
+        guard ctx.canEvaluatePolicy(.deviceOwnerAuthentication, error: &err) else { call.resolve(["ok": true, "available": false]); return }
+        ctx.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: call.getString("reason") ?? "Desbloquear a app") { ok, _ in
+            DispatchQueue.main.async { call.resolve(["ok": ok, "available": true]) }
+        }
     }
 
     private func date(_ s: String?) -> Date? {

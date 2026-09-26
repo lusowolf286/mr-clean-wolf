@@ -455,7 +455,8 @@ async function boot(){
 
 /* ============ pedidos de marcação e dias disponíveis ============ */
 let pedidosApi=null, agendaApi=null, PED=[], AG=null, agPub="", agT=null;
-async function loadPedidos(){ if (!pedidosApi) return; try { PED=await pedidosApi.list(); schedule(); } catch(e){ console.error("pedidos",e); } }
+let pedIds=null;
+async function loadPedidos(){ if (!pedidosApi) return; try { const l=await pedidosApi.list(); const novos=pedIds?l.filter(p=>!pedIds.has(p.id)).length:0; pedIds=new Set(l.map(p=>p.id)); PED=l; schedule(); if (novos) toast(novos>1?`${novos} novos pedidos de marcação.`:"Novo pedido de marcação."); } catch(e){ console.error("pedidos",e); } }
 const agDefault = () => ({ semana:[false,true,true,true,true,true,true], capacidade:2, antecedencia:1, horizonte:60, fechados:[], abertos:[] });
 function agCount(d){ return list("servicos").filter(r=>r.d===d).length; }
 function agCheios(){ const t=today(), m={}; for (const r of list("servicos")) if (r.d>t) m[r.d]=(m[r.d]||0)+1; return Object.keys(m).filter(d=>m[d]>=(+AG.capacidade||1)).sort(); }
