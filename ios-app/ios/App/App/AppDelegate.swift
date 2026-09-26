@@ -49,6 +49,20 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
 }
 
+// MARK: - Mr Clean Wolf: ciclo de vida por cenas (exigido pelo SDK iOS 26)
+
+class SceneDelegate: UIResponder, UIWindowSceneDelegate {
+    var window: UIWindow?
+    func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
+        guard scene is UIWindowScene else { return }
+        // A janela e o ecrã principal (Main.storyboard) são criados pelo UIKit.
+        (UIApplication.shared.delegate as? AppDelegate)?.window = window
+    }
+    func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
+        for ctx in URLContexts { _ = ApplicationDelegateProxy.shared.application(UIApplication.shared, open: ctx.url, options: [:]) }
+    }
+}
+
 // MARK: - Mr Clean Wolf: ecrã principal e funções nativas
 
 
