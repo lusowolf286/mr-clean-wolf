@@ -25,11 +25,15 @@ O código fica no GitHub (público, sem dados). Os dados, as fotografias e as co
    <p>O código é válido durante 1 hora.</p>
    ```
 
+   Faça o mesmo no modelo **Confirm signup** (é o que recebem os clientes no primeiro acesso).
    As apps usam o **código de 6 dígitos**, não o link (no iPhone, o link abriria fora da app instalada).
+   Em **Authentication → Sign In / Providers → Email**, mantenha o comprimento do código (*Email OTP Length*) em 6.
 6. **Authentication → Users → Add user → Create new user**: crie o utilizador com o seu e-mail (o mesmo da tabela `admins`).
 7. **Project Settings → API**: copie o **Project URL** e a chave **anon public**.
 
 > A chave `service_role` nunca deve ser colocada no código nem partilhada.
+
+8. **Envio de e-mails aos clientes**: o servidor de e-mail incluído no Supabase só entrega mensagens aos membros da equipa do projeto e tem um limite de poucas mensagens por hora. Para os clientes receberem o código, configure um servidor SMTP próprio em **Authentication → Emails → SMTP Settings** (por exemplo, Brevo ou Resend, com plano gratuito). Para uso apenas pelo gestor, não é necessário.
 
 ## 2. Configurar
 
