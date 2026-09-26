@@ -72,6 +72,27 @@ h2{font:700 16px Syne,sans-serif;letter-spacing:.03em;margin:26px 0 10px}
 .viewer img{max-width:100%;max-height:88vh;border-radius:12px}
 .viewer button{position:absolute;top:calc(12px + env(safe-area-inset-top,0px));right:12px;width:48px;height:48px;border-radius:12px;border:0;background:rgba(255,255,255,.12);color:#fff;font-size:24px;cursor:pointer}
 .empty{color:var(--muted);padding:12px 0}
+button,input,select,textarea{font:inherit;color:inherit}
+select,textarea{font-size:16px}
+.fld select,.fld textarea{min-height:48px;border:1px solid #3A3632;background:var(--surface2);border-radius:12px;padding:10px 14px;width:100%}
+.fld textarea{min-height:90px;resize:vertical}
+.cta{margin-top:18px}
+.seg{display:flex;gap:4px;padding:4px;border:1px solid var(--line);border-radius:14px;background:var(--surface)}
+.seg button{flex:1;border:0;background:none;min-height:44px;border-radius:10px;font-weight:600;color:var(--muted);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--ruby);color:#fff}
+.svs{display:flex;flex-wrap:wrap;gap:6px}
+.svs button{min-height:40px;padding:0 12px;border-radius:10px;border:1px solid #3A3632;background:var(--surface2);font-size:14px;font-weight:600;cursor:pointer}
+.svs button[aria-pressed="true"]{background:var(--rubydeep);border-color:var(--ruby2);color:var(--copper)}
+.gl{font-size:11.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:8px 0 2px}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.cal .dw{font-size:11px;font-weight:700;color:var(--muted);text-align:center;text-transform:uppercase;padding:4px 0}
+.cal button{min-height:44px;border-radius:10px;border:1px solid var(--line);background:var(--surface);font-weight:600;font-variant-numeric:tabular-nums;cursor:pointer}
+.cal button:disabled{background:transparent;border-color:transparent;color:#5C554E;cursor:default;text-decoration:line-through}
+.cal button[aria-pressed="true"]{background:var(--ruby);border-color:var(--ruby2);color:#fff}
+.mh{font-weight:700;margin:10px 0 4px;text-transform:capitalize}
+.p-pe{background:#2B2413;color:var(--gold)}.p-ok{background:#123024;color:var(--pos)}.p-no{background:#34080F;color:#F2A99E}
+.lnk{background:none;border:0;color:var(--copper);text-decoration:underline;padding:8px 0;cursor:pointer;font-size:14px;justify-self:start}
+.form{display:grid;gap:16px;margin-top:8px}
 </style>
 </head>
 <body>
@@ -127,14 +148,21 @@ function code(email, err){
   $("#back").onclick = () => login(email); $("#code").focus();
 }
 
+let AG = null, PED = [], ROWS = [], EMAIL = "";
 async function load(){
   let rows = null, offline = false;
   try {
-    const { data, error } = await sb.from("portal").select("nome,dados,updated_at");
-    if (error) throw error;
-    rows = data; try { localStorage.setItem(CACHE, JSON.stringify(rows)); } catch(e){}
+    const { data:{ session } } = await sb.auth.getSession(); EMAIL = session && session.user ? (session.user.email||"").toLowerCase() : "";
+    const [p, a, q] = await Promise.all([
+      sb.from("portal").select("cliente_id,nome,dados,updated_at"),
+      sb.from("agenda").select("dados").eq("id","config").maybeSingle(),
+      sb.from("pedidos").select("id,dados,estado,resposta,created_at").order("created_at",{ ascending:false }).limit(30)
+    ]);
+    if (p.error) throw p.error;
+    rows = p.data; AG = a.error || !a.data ? null : a.data.dados; PED = q.error ? [] : (q.data || []);
+    try { localStorage.setItem(CACHE, JSON.stringify({ rows, ag:AG, ped:PED })); } catch(e){}
   } catch(e){
-    try { rows = JSON.parse(localStorage.getItem(CACHE) || "null"); } catch(x){}
+    try { const c = JSON.parse(localStorage.getItem(CACHE) || "null"); if (Array.isArray(c)) rows = c; else if (c){ rows = c.rows; AG = c.ag; PED = c.ped || []; } } catch(x){}
     offline = true;
   }
   render(rows || [], offline);
@@ -145,6 +173,7 @@ function render(rows, offline){
     app.innerHTML = `<h1>Sem histórico</h1><p class="sub">Este e-mail não está associado a nenhuma ficha de cliente.</p>${footer()}`;
     wireFooter(); return;
   }
+  ROWS = rows;
   const nome = rows[0].nome || "";
   const svc = rows.flatMap(r => (r.dados && r.dados.servicos) || []).sort((a,b) => (b.d+(b.hora||"")).localeCompare(a.d+(a.hora||"")));
   const cars = [...new Map(rows.flatMap(r => (r.dados && r.dados.viaturas) || []).map(v => [v.matricula||v.viatura, v])).values()];
@@ -162,12 +191,96 @@ function render(rows, offline){
   app.innerHTML = `<h1>Olá, ${esc(nome.split(" ")[0])}</h1><p class="sub" style="margin:0">Histórico de serviços${since?` desde ${since}`:""}.</p>
     ${offline?`<div class="banner">Sem ligação à internet. A mostrar a última informação guardada.</div>`:""}
     <div class="kpis"><div class="kpi hero"><div class="l">Serviços</div><div class="v">${done.length}</div></div><div class="kpi"><div class="l">Último</div><div class="v" style="font-size:17px">${done[0]?esc(fmtD(done[0].d)):"—"}</div></div></div>
+    ${AG && !offline ? `<button class="btn cta" type="button" id="book">Pedir marcação</button>` : ""}
+    ${pedidosHtml()}
     ${open.length?`<h2>Marcações em curso</h2><div class="list">${open.map(entry).join("")}</div>`:""}
     ${cars.length?`<h2>As suas viaturas</h2><div class="cars">${cars.map(v=>`<div class="car"><b>${esc(v.viatura||"Viatura")}</b><span>${esc(v.matricula||"")}</span></div>`).join("")}</div>`:""}
     <h2>Diário de serviços</h2><div class="list">${done.map(entry).join("") || `<p class="empty">Ainda sem serviços concluídos.</p>`}</div>
     ${upd?`<p class="sub" style="font-size:12.5px;margin-top:18px">Atualizado a ${esc(fmtD(upd))}.</p>`:""}
     ${footer()}`;
   wireFooter(); photos();
+  const bk = $("#book"); if (bk) bk.onclick = () => booking();
+  app.querySelectorAll("[data-cancel]").forEach(b => b.onclick = async () => {
+    b.disabled = true; const { error } = await sb.from("pedidos").delete().eq("id", b.dataset.cancel);
+    if (error){ b.disabled = false; alertMsg("Não foi possível anular o pedido. Tente de novo."); } else load();
+  });
+}
+function alertMsg(m){ const el = document.createElement("div"); el.className = "banner"; el.textContent = m; app.prepend(el); setTimeout(() => el.remove(), 5000); window.scrollTo(0,0); }
+
+/* ---------- pedidos de marcação ---------- */
+const PER = { manha:"Manhã", tarde:"Tarde", indif:"Indiferente" };
+const PST = { pendente:["A aguardar confirmação","p-pe"], aceite:["Confirmado","p-ok"], recusado:["Não aceite","p-no"] };
+const DOW = ["dom","seg","ter","qua","qui","sex","sáb"];
+const pad2 = n => String(n).padStart(2,"0");
+const dstr = d => `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
+const addDays = (s,n) => { const d = new Date(s+"T12:00:00"); d.setDate(d.getDate()+n); return dstr(d); };
+function pedidosHtml(){
+  const t = dstr(new Date());
+  const list = PED.filter(p => p.estado === "pendente" || ((p.dados||{}).d >= t && p.estado !== "aceite") || (p.estado === "aceite" && (p.dados||{}).d >= t));
+  if (!list.length) return "";
+  return `<h2>Os seus pedidos</h2><div class="list">${list.map(p => { const d = p.dados || {}, st = PST[p.estado] || PST.pendente;
+    return `<article class="card"><div class="row"><span class="date">${esc(fmtD(d.d))}</span><span class="sub">${esc(PER[d.periodo]||"")}</span><span class="pill ${st[1]}">${st[0]}</span></div>
+      ${d.viatura||d.matricula?`<div class="sub">${esc([d.viatura,d.matricula].filter(Boolean).join(" · "))}</div>`:""}
+      <div class="chips">${(d.servicos||[]).map(x=>`<span class="chip">${esc(x)}</span>`).join("")}</div>
+      ${p.resposta?`<div class="notes">${esc(p.resposta)}</div>`:""}
+      ${p.estado==="pendente"?`<button class="lnk" type="button" data-cancel="${esc(p.id)}">Anular pedido</button>`:""}</article>`; }).join("")}</div>`;
+}
+function livres(){
+  if (!AG) return [];
+  const t = dstr(new Date()), out = [], taken = new Set(PED.filter(p => p.estado === "pendente").map(p => (p.dados||{}).d));
+  const fech = AG.fechados || [], abert = AG.abertos || [], cheio = AG.cheios || [], sem = AG.semana || [];
+  for (let i = Math.max(1, +AG.antecedencia || 1); i <= (+AG.horizonte || 60); i++){
+    const d = addDays(t, i), dow = new Date(d+"T12:00:00").getDay();
+    const open = (sem[dow] && !fech.includes(d)) || abert.includes(d);
+    if (open && !cheio.includes(d) && !taken.has(d)) out.push(d);
+  }
+  return out;
+}
+function booking(){
+  const me = ROWS[0] || {};
+  const cars = [...new Map(ROWS.flatMap(r => (r.dados && r.dados.viaturas) || []).map(v => [v.matricula||v.viatura, v])).values()];
+  const days = livres(), pend = PED.filter(p => p.estado === "pendente").length;
+  const f = { d:"", periodo:"indif", sv:[], car: cars.length ? 0 : -1 };
+  const groups = [...new Set((AG.servicos||[]).map(x => x.g))];
+  const months = () => { if (!days.length) return `<p class="empty">De momento não há dias disponíveis. Tente mais tarde.</p>`;
+    const set = new Set(days), first = days[0], last = days[days.length-1]; let h = "", y = +first.slice(0,4), m = +first.slice(5,7)-1;
+    while (dstr(new Date(y,m,1)) <= last){ const n = new Date(y,m+1,0).getDate(), padn = (new Date(y,m,1).getDay()+6)%7;
+      h += `<div class="mh">${MES[m]} ${y}</div><div class="cal">${[1,2,3,4,5,6,0].map(i=>`<span class="dw">${DOW[i]}</span>`).join("")}${"<span></span>".repeat(padn)}`;
+      for (let i = 1; i <= n; i++){ const d = `${y}-${pad2(m+1)}-${pad2(i)}`; h += `<button type="button" data-d="${d}" ${set.has(d)?"":"disabled"} aria-pressed="${f.d===d}">${i}</button>`; }
+      h += `</div>`; m++; if (m > 11){ m = 0; y++; } }
+    return h; };
+  app.innerHTML = `<button class="lnk" type="button" id="bk-back">‹ Voltar</button><h1>Pedir marcação</h1>
+    <p class="sub" style="margin:0">Escolha o dia e os serviços. O pedido fica a aguardar confirmação e a resposta aparece aqui na área de cliente.</p>
+    ${pend >= 3 ? `<div class="banner">Já tem 3 pedidos a aguardar confirmação. Aguarde a resposta antes de fazer outro.</div>` : ""}
+    <div class="form">
+      <label class="fld"><span>Viatura</span><select id="bk-car">${cars.map((v,i)=>`<option value="${i}">${esc([v.viatura,v.matricula].filter(Boolean).join(" · ")||"Viatura")}</option>`).join("")}<option value="-1" ${cars.length?"":"selected"}>Outra viatura</option></select></label>
+      <div id="bk-new" class="form" style="margin:0" ${cars.length?"hidden":""}><label class="fld"><span>Marca e modelo</span><input id="bk-via" autocomplete="off"></label><label class="fld"><span>Matrícula</span><input id="bk-mat" autocomplete="off" style="text-transform:uppercase"></label></div>
+      <div><div class="fld"><span>Serviços pretendidos</span></div>${groups.map(g => `<div class="gl">${esc(g)}</div><div class="svs">${(AG.servicos||[]).filter(x=>x.g===g).map(x=>`<button type="button" data-sv="${esc(x.k)}" aria-pressed="false">${esc(x.l)}</button>`).join("")}</div>`).join("")}</div>
+      <div><div class="fld"><span>Dia</span></div><div id="bk-cal">${months()}</div></div>
+      <div><div class="fld"><span>Período</span></div><div class="seg" id="bk-per">${Object.entries(PER).map(([k,l])=>`<button type="button" data-per="${k}" aria-pressed="${f.periodo===k}">${l}</button>`).join("")}</div></div>
+      <label class="fld"><span>Observações (opcional)</span><textarea id="bk-notas" placeholder="Ex.: pelo de animais, manchas nos bancos, horário de entrega…"></textarea></label>
+      <button class="btn" type="button" id="bk-send" ${pend>=3||!days.length?"disabled":""}>Enviar pedido</button>
+      <p class="msg" id="bk-msg"></p>
+    </div>${footer()}`;
+  wireFooter(); window.scrollTo(0,0);
+  $("#bk-back").onclick = () => render(ROWS, false);
+  $("#bk-car").onchange = e => { f.car = +e.target.value; $("#bk-new").hidden = f.car !== -1; };
+  app.querySelectorAll("[data-sv]").forEach(b => b.onclick = () => { const k = b.dataset.sv; f.sv = f.sv.includes(k) ? f.sv.filter(x => x !== k) : [...f.sv, k]; b.setAttribute("aria-pressed", f.sv.includes(k)); });
+  $("#bk-cal").onclick = e => { const b = e.target.closest("[data-d]"); if (!b || b.disabled) return; f.d = b.dataset.d; $("#bk-cal").querySelectorAll("[data-d]").forEach(x => x.setAttribute("aria-pressed", x.dataset.d === f.d)); };
+  $("#bk-per").onclick = e => { const b = e.target.closest("[data-per]"); if (!b) return; f.periodo = b.dataset.per; $("#bk-per").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x.dataset.per === f.periodo)); };
+  $("#bk-send").onclick = async () => {
+    const msg = $("#bk-msg"); msg.className = "msg err";
+    if (!f.sv.length){ msg.textContent = "Escolha pelo menos um serviço."; return; }
+    if (!f.d){ msg.textContent = "Escolha o dia."; return; }
+    const car = f.car >= 0 ? cars[f.car] : { viatura:$("#bk-via").value.trim(), matricula:$("#bk-mat").value.trim().toUpperCase() };
+    if (f.car < 0 && !car.viatura && !car.matricula){ msg.textContent = "Indique a viatura."; return; }
+    const lbl = Object.fromEntries((AG.servicos||[]).map(x => [x.k, x.l]));
+    $("#bk-send").disabled = true; msg.className = "msg"; msg.textContent = "A enviar…";
+    const { error } = await sb.from("pedidos").insert({ cliente_id: me.cliente_id, email: EMAIL, nome: me.nome,
+      dados: { d:f.d, periodo:f.periodo, sv:f.sv, servicos:f.sv.map(k => lbl[k] || k), viatura:car.viatura||"", matricula:car.matricula||"", notas:$("#bk-notas").value.trim() } });
+    if (error){ console.error(error); $("#bk-send").disabled = false; msg.className = "msg err"; msg.textContent = "Não foi possível enviar o pedido. Verifique a ligação e tente de novo."; return; }
+    await load(); alertMsg("Pedido enviado. A confirmação aparece aqui, em “Os seus pedidos”.");
+  };
 }
 const footer = () => `<div class="foot"><a href="../privacidade.html">Privacidade</a><button type="button" id="logout">Terminar sessão</button></div>`;
 function wireFooter(){ const b = $("#logout"); if (b) b.onclick = async () => { try { localStorage.removeItem(CACHE); } catch(e){} await sb.auth.signOut(); login(); }; }
@@ -194,7 +307,7 @@ document.addEventListener("keydown", e => { if (e.key === "Escape") closeV(); })
   if (!sb){ app.innerHTML = `<p class="sub">A área de cliente ainda não está configurada.</p>`; return; }
   const { data:{ session } } = await sb.auth.getSession();
   if (session) load();
-  else if (!navigator.onLine){ let rows=null; try { rows = JSON.parse(localStorage.getItem(CACHE)||"null"); } catch(e){} if (rows) render(rows, true); else app.innerHTML = `<p class="sub">Sem ligação à internet.</p>`; }
+  else if (!navigator.onLine){ let rows=null; try { const c = JSON.parse(localStorage.getItem(CACHE)||"null"); rows = Array.isArray(c) ? c : c && c.rows; if (c && !Array.isArray(c)){ AG = c.ag; PED = c.ped || []; } } catch(e){} if (rows) render(rows, true); else app.innerHTML = `<p class="sub">Sem ligação à internet.</p>`; }
   else login();
 })();
 if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));

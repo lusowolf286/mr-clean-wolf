@@ -29,7 +29,8 @@ O código fica no GitHub (público, sem dados). Os dados, as fotografias e as co
    As apps usam o **código de 6 dígitos**, não o link (no iPhone, o link abriria fora da app instalada).
    Em **Authentication → Sign In / Providers → Email**, mantenha o comprimento do código (*Email OTP Length*) em 6.
 6. **Authentication → Users → Add user → Create new user**: crie o utilizador com o seu e-mail (o mesmo da tabela `admins`).
-7. **Project Settings → API**: copie o **Project URL** e a chave **anon public**.
+7. **Pedidos de marcação e dias disponíveis**: no SQL Editor, numa nova consulta, cole `supabase/marcacoes.sql` e carregue em **Run**.
+8. **Project Settings → API**: copie o **Project URL** e a chave **anon public**.
 
 > A chave `service_role` nunca deve ser colocada no código nem partilhada.
 

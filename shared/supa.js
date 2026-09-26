@@ -1,5 +1,5 @@
 /* Mr Clean Wolf — ligação ao Supabase para a app de gestão.
-   Fornece a mesma interface que a app usava no claude.ai (claude.use("db"|"assets"|"downloads"|"portal")),
+   Fornece a mesma interface que a app usava no claude.ai (claude.use("db"|"assets"|"downloads"|"portal"|"pedidos"|"agenda")),
    para que o código da app se mantenha igual nas duas versões. */
 (() => {
 "use strict";
@@ -212,6 +212,17 @@ const portal = {
   async upsert(row){ const { error } = await sb.from("portal").upsert(Object.assign({}, row, { updated_at: new Date().toISOString() })); if (error) throw error; }
 };
 
+/* ---------- pedidos de marcação e dias disponíveis ---------- */
+const pedidos = {
+  async list(){ const { data, error } = await sb.from("pedidos").select("*").eq("estado","pendente").order("created_at"); if (error) throw error; return data || []; },
+  async update(id, patch){ const { error } = await sb.from("pedidos").update(Object.assign({}, patch, { updated_at: new Date().toISOString() })).eq("id", id); if (error) throw error; },
+  subscribe(cb){ return sb.channel("pedidos-changes").on("postgres_changes", { event:"*", schema:"public", table:"pedidos" }, () => cb()).subscribe(); }
+};
+const agenda = {
+  async get(){ const { data, error } = await sb.from("agenda").select("dados").eq("id","config").maybeSingle(); if (error) throw error; return data ? data.dados : null; },
+  async set(dados){ const { error } = await sb.from("agenda").upsert({ id:"config", dados, updated_at: new Date().toISOString() }); if (error) throw error; }
+};
+
 window.claude = {
   async use(name){
     if (name === "downloads") return downloads;
@@ -220,6 +231,8 @@ window.claude = {
     if (name === "db") return db;
     if (name === "assets") return s === "offline" ? null : assets;
     if (name === "portal") return s === "offline" ? null : portal;
+    if (name === "pedidos") return s === "offline" ? null : pedidos;
+    if (name === "agenda") return s === "offline" ? null : agenda;
     return null;
   }
 };
