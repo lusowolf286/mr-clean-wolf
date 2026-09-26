@@ -450,8 +450,7 @@ async function smsAcesso(c){
   if (num.replace(/\D/g,"").length<9){ toast("Falta o telemóvel do cliente. Use \"Editar dados\"."); return; }
   if (!c.email){ toast("Falta o e-mail do cliente: é com ele que entra na área de cliente."); return; }
   if (portal){ try { await portal.upsert(portalData(c)); } catch(e){ console.error("portal",e); } }
-  const nome=String(c.nome||"").trim().split(/\s+/)[0];
-  const body=`Olá ${nome}, já pode consultar o histórico da sua viatura na área de cliente Mr Clean Wolf: ${CLIENTE_LINK}\nEntre com o e-mail ${c.email} e o código que vai receber.`;
+  const body=`Olá! Gostaríamos de convidá-lo a aceder à sua área de cliente onde poderá consultar o histórico dos seus serviços feitos connosco, bem como fazer marcações para os seus próximos serviços!\n${CLIENTE_LINK}\nEntre com o e-mail ${c.email}.`;
   const ios=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1)||!!(window.Capacitor&&window.Capacitor.getPlatform&&window.Capacitor.getPlatform()==="ios");
   const a=document.createElement("a"); a.href=`sms:${num}${ios?"&":"?"}body=${encodeURIComponent(body)}`; document.body.appendChild(a); a.click(); setTimeout(()=>a.remove(),1000);
 }
