@@ -33,7 +33,13 @@ $$;
 revoke all on function public.is_admin() from public;
 grant execute on function public.is_admin() to authenticated;
 
--- 5. Regras de acesso (Row Level Security)
+-- 5. Permissões de acesso às tabelas (as regras abaixo limitam cada utilizador ao que lhe cabe)
+grant usage on schema public to authenticated;
+grant select on public.admins to authenticated;
+grant select, insert, update, delete on public.docs   to authenticated;
+grant select, insert, update, delete on public.portal to authenticated;
+
+-- 6. Regras de acesso (Row Level Security)
 alter table public.admins enable row level security;
 alter table public.docs   enable row level security;
 alter table public.portal enable row level security;
@@ -56,7 +62,7 @@ create policy "cliente lê o seu portal" on public.portal
   for select to authenticated
   using (email is not null and lower(email) = lower(coalesce(auth.jwt() ->> 'email', '')));
 
--- 6. Fotografias (armazenamento privado)
+-- 7. Fotografias (armazenamento privado)
 insert into storage.buckets (id, name, public) values ('fotos', 'fotos', false)
   on conflict (id) do nothing;
 
@@ -79,7 +85,7 @@ create policy "cliente vê as suas fotos" on storage.objects
     )
   );
 
--- 7. Atualizações em tempo real na app de gestão
+-- 8. Atualizações em tempo real na app de gestão
 do $$ begin
   alter publication supabase_realtime add table public.docs;
 exception when duplicate_object then null; end $$;
