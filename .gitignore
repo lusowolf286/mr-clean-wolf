@@ -1,3 +1,5 @@
 dados/
 *.sql.private
 .DS_Store
+ios-app/node_modules/
+ios-app/www/

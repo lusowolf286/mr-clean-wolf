@@ -1,0 +1,12 @@
+{
+	"appId": "pt.mrcleanwolf.gestao",
+	"appName": "Clean Wolf",
+	"webDir": "www",
+	"backgroundColor": "#121212",
+	"ios": {
+		"contentInset": "never",
+		"backgroundColor": "#121212",
+		"scrollEnabled": true
+	},
+	"packageClassList": []
+}
