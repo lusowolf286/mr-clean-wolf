@@ -561,22 +561,27 @@ async function smsDados(c){
   const num=smsNumber(c.tel); if (num.replace(/\D/g,"").length<9){ toast("Falta o telemóvel do cliente. Use \"Editar dados\"."); return; }
   let token; try { token=await atualApi.create(c._id, c.nome); }
   catch(e){ console.error(e); const m=String((e&&(e.code||""))+" "+(e&&e.message||"")); if (/42P01|PGRST205|atualizacoes/i.test(m)) toast("Falta ativar esta função no Supabase (ficheiro atualizacoes.sql)."); else writeErr(e); return; }
-  openSms(num, `Olá! Para mantermos a sua ficha de cliente Mr Clean Wolf atualizada, pedimos que confirme os seus dados (e-mail, telemóvel, morada e NIF) neste link:\n${DADOS_URL}${token}\nO link é pessoal e válido durante 30 dias. Obrigado!`);
+  openSms(num, `Olá! Para mantermos a sua ficha de cliente Mr Clean Wolf atualizada, pedimos que confirme os seus dados (e-mail, telemóvel, morada, NIF e viaturas) neste link:\n${DADOS_URL}${token}\nO link é pessoal e válido durante 30 dias. Obrigado!`);
 }
+const matKey = m => String(m||"").toUpperCase().replace(/[^A-Z0-9]/g,"");
+function viasDe(c){ const m=new Map(); const add=v=>{ if (!v||(!v.viatura&&!v.matricula)) return; const k=matKey(v.matricula)||("v:"+String(v.viatura).toLowerCase()); if (!m.has(k)) m.set(k,{viatura:v.viatura||"",matricula:v.matricula||""}); };
+  (c.viaturas||[]).forEach(add); list("servicos").filter(r=>r.cli===c.nome).sort(byDateDesc).forEach(r=>add(r)); return [...m.values()]; }
 const ATU_F = [["email","E-mail"],["tel","Telemóvel"],["morada","Morada"],["nif","NIF"]];
 function atualCard(a){ const c=S.clientes[a.cliente_id]||{}, d=a.dados||{};
   return `<div class="ag ped" style="grid-template-columns:minmax(0,1fr)"><div>
     <div class="r-title"><span class="nm">${esc(c.nome||a.nome||"Cliente")}</span><span class="pill p-fa">Dados novos</span></div>
     <div class="kv">${ATU_F.filter(([k])=>d[k]).map(([k,l])=>`<span>${l}</span><span>${c[k]&&c[k]!==d[k]?`<s class="muted">${esc(c[k])}</s><br>`:""}<b>${esc(d[k])}</b>${c[k]===d[k]?` <span class="muted">(igual)</span>`:""}</span>`).join("")}</div>
+    ${(d.viaturas||[]).length?`<div class="kv"><span>Viaturas</span><span>${d.viaturas.map(v=>{ const has=viasDe(c).some(x=>matKey(x.matricula)&&matKey(x.matricula)===matKey(v.matricula)); return `<b>${esc([v.viatura,v.matricula].filter(Boolean).join(" · "))}</b>${has?` <span class="muted">(já registada)</span>`:` <span class="gold">(nova)</span>`}`; }).join("<br>")}</span></div>`:""}
     <div class="acts"><button class="btn sm pri" data-atu-ok="${esc(a.id)}">Aplicar à ficha</button><button class="btn sm" data-atu-no="${esc(a.id)}">Descartar</button></div></div></div>`; }
 async function atualAplicar(id){ const a=ATU.find(x=>x.id===id); if (!a) return; const c=S.clientes[a.cliente_id];
   if (!c){ toast("A ficha deste cliente já não existe."); return; }
   const d=a.dados||{}, rec=Object.assign({},clean(c)); for (const [k] of ATU_F) if (d[k]) rec[k]=d[k];
+  if ((d.viaturas||[]).length){ const cur=[...(c.viaturas||[])]; for (const v of d.viaturas){ const i=cur.findIndex(x=>matKey(x.matricula)&&matKey(x.matricula)===matKey(v.matricula)); if (i>=0) cur[i]=Object.assign({},cur[i],{viatura:v.viatura||cur[i].viatura}); else cur.push({viatura:v.viatura||"",matricula:v.matricula||""}); } rec.viaturas=cur; }
   try { await putItem("clientes",a.cliente_id,rec); await atualApi.update(id,"aplicado"); ATU=ATU.filter(x=>x.id!==id); queuePortal(c.nome); schedule(); toast("Ficha atualizada."); } catch(e){ writeErr(e); } }
 async function atualDescartar(id){ try { await atualApi.update(id,"descartado"); ATU=ATU.filter(x=>x.id!==id); schedule(); toast("Resposta descartada."); } catch(e){ writeErr(e); } }
 function portalData(c){
   const svc=list("servicos").filter(r=>r.cli===c.nome).sort(byDateDesc);
-  const vias=[...new Map(svc.filter(r=>r.viatura||r.matricula).map(r=>[(r.matricula||r.viatura),{viatura:r.viatura||"",matricula:r.matricula||""}])).values()];
+  const vias=viasDe(c);
   return { cliente_id:c._id, email:(c.email||"").trim().toLowerCase()||null, nome:c.nome, dados:{ atualizado:today(), viaturas:vias,
     servicos:svc.map(r=>{ const vis=r.visivelCliente!==false; return { d:r.d, hora:r.hora||"", estado:est(r), viatura:r.viatura||"", matricula:r.matricula||"", cat:r.cat||"",
       servicos:(r.sv||[]).map(k=>SVK[k]?SVK[k].l:k), extras:(r.extras||[]).map(x=>x.nome).filter(Boolean), notas:vis?(r.notas||""):"", fotos:vis?(r.fotos||[]).map(p=>p.id).filter(Boolean):[], valor:+r.fat||0 }; }) } };
@@ -1025,7 +1030,7 @@ function editServico(id, preset){
       <label class="fld"><span class="lbl">Cliente</span><input id="f-cli" data-sug="dl-cli" value="${esc(f.cli)}" placeholder="Nome" autocomplete="off"></label></div>
     ${dlist("dl-cli",list("clientes").map(c=>c.nome))}
     <div class="two"><label class="fld"><span class="lbl">Viatura</span><input id="f-via" data-sug="dl-via" value="${esc(f.viatura)}" placeholder="Marca e modelo"></label><label class="fld"><span class="lbl">Matrícula</span><input id="f-mat" value="${esc(f.matricula)}" placeholder="AA-00-AA" autocapitalize="characters"></label></div>
-    ${dlist("dl-via",list("servicos").map(r=>r.viatura))}
+    ${dlist("dl-via",[...list("servicos").map(r=>r.viatura),...list("clientes").flatMap(c=>(c.viaturas||[]).map(v=>v.viatura))])}
     <div class="fld"><span class="lbl">Categoria do veículo</span><div class="cats" id="f-cat">${CATS.map(c=>`<button type="button" data-cat="${c}" aria-pressed="${f.cat===c}">${c}</button>`).join("")}</div></div>
     <div id="f-svs" style="display:grid;gap:12px">${svHtml()}</div>
     <div class="fld"><span class="lbl">Cerâmicas e produtos à parte</span><div id="f-xl" style="display:grid;gap:6px">${xlHtml()}</div><button type="button" class="addl" id="f-xadd">+ Adicionar produto</button><span class="note">Debitados ao cliente pelo custo, sem margem.</span></div>
@@ -1069,7 +1074,7 @@ function editServico(id, preset){
     $("#f-dt").onchange=e=>{ f.descTipo=e.target.value; $("#f-dm-w").hidden=f.descTipo!=="manual"; touch(); };
     $("#f-dm").oninput=e=>{ f.descManual=numIn(e.target.value)/100; touch(); };
     if ($("#f-extra")) $("#f-extra").oninput=e=>{ f.extra=numIn(e.target.value); touch(); };
-    $("#f-cli").addEventListener("change",e=>{ if (!ex){ f.cli=e.target.value.trim(); f.descTipo=defaultDesc(f.cli); $("#f-dt").value=f.descTipo; $("#f-dm-w").hidden=f.descTipo!=="manual"; const last=list("servicos").filter(r=>r.cli===f.cli&&r.viatura).sort(byDateDesc)[0]; if (last){ if (!$("#f-via").value) $("#f-via").value=last.viatura; if (!$("#f-mat").value) $("#f-mat").value=last.matricula||""; if (last.cat){ f.cat=last.cat; $("#f-cat").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x.dataset.cat===f.cat)); $("#f-svs").innerHTML=svHtml(); } } touch(); } });
+    $("#f-cli").addEventListener("change",e=>{ if (!ex){ f.cli=e.target.value.trim(); f.descTipo=defaultDesc(f.cli); $("#f-dt").value=f.descTipo; $("#f-dm-w").hidden=f.descTipo!=="manual"; const last=list("servicos").filter(r=>r.cli===f.cli&&r.viatura).sort(byDateDesc)[0]||((clientByName(f.cli)||{}).viaturas||[])[0]; if (last){ if (!$("#f-via").value) $("#f-via").value=last.viatura; if (!$("#f-mat").value) $("#f-mat").value=last.matricula||""; if (last.cat){ f.cat=last.cat; $("#f-cat").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x.dataset.cat===f.cat)); $("#f-svs").innerHTML=svHtml(); } } touch(); } });
     fatIn.oninput=e=>{ f.fatManual=e.target.value.trim()===""?null:numIn(e.target.value); paint(); };
     const ph=$("#f-ph");
     ph.addEventListener("click",e=>{ const b=e.target.closest("[data-pdel]"); if(!b) return; const [p]=f.fotos.splice(+b.dataset.pdel,1); ph.innerHTML=phHtml(); if (assets&&p&&p.id) assets.delete(p.id).catch(()=>{}); });
@@ -1135,7 +1140,7 @@ function openCliente(cid){
   const c=S.clientes[cid]; if (!c) return;
   const svc=list("servicos").filter(r=>r.cli===c.nome).sort(byDateDesc);
   const fat=svc.reduce((a,r)=>a+(+r.fat||0),0), rl=svc.reduce((a,r)=>a+resOf(r),0);
-  const vias=[...new Map(svc.filter(r=>r.viatura||r.matricula).map(r=>[(r.matricula||r.viatura),r])).values()];
+  const vias=viasDe(c);
   const body=`<div class="kpis" style="grid-template-columns:repeat(3,minmax(0,1fr))"><div class="kpi"><span class="lbl">Serviços</span><span class="v">${svc.length}</span></div><div class="kpi"><span class="lbl">Faturado</span><span class="v">${eur0(fat)}</span></div><div class="kpi"><span class="lbl">Resultado</span><span class="v gold">${eur0(rl)}</span></div></div>
     <div class="kv"><span>NIF</span><span>${esc(c.nif||"—")}</span><span>Telefone</span><span>${esc(c.tel||"—")}</span><span>E-mail</span><span>${esc(c.email||"—")}</span><span>Morada</span><span style="white-space:pre-line">${esc(c.morada||"—")}</span><span>Desconto</span><span>${cliDesc(c)?DESC_LBL[cliDesc(c)]+" ("+nf0.format(descRates()[cliDesc(c)]*100)+" %)":"—"}</span>
     ${vias.length?`<span>Viaturas</span><span>${vias.map(r=>esc([r.viatura,r.matricula].filter(Boolean).join(" · "))).join("<br>")}</span>`:""}</div>
@@ -1159,14 +1164,22 @@ function editCliente(id){
     <label class="fld"><span class="lbl">Nome</span><input id="k-nome" value="${esc(ex?ex.nome:"")}"></label>
     <div class="two"><label class="fld"><span class="lbl">Telefone</span><input id="k-tel" inputmode="tel" value="${esc(ex?ex.tel:"")}"></label><label class="fld"><span class="lbl">E-mail</span><input id="k-email" type="email" value="${esc(ex?ex.email:"")}"></label></div>
     <label class="fld"><span class="lbl">Morada</span><textarea id="k-morada" rows="2" placeholder="Rua, n.º, código postal e localidade">${esc(ex?ex.morada||"":"")}</textarea></label>
+    <div class="fld"><span class="lbl">Viaturas</span><div id="k-vias" style="display:grid;gap:8px"></div><button class="btn sm" type="button" id="k-vadd" style="justify-self:start">+ Adicionar viatura</button></div>
     <label class="fld"><span class="lbl">Desconto permanente</span><select id="k-desc"><option value="">Sem desconto</option><option value="familia" ${cliDesc(ex)==="familia"?"selected":""}>Família (${nf0.format(descRates().familia*100)} %)</option><option value="first" ${cliDesc(ex)==="first"?"selected":""}>First customer (${nf0.format(descRates().first*100)} %)</option></select></label>
     <p class="note">O desconto é aplicado automaticamente em cada serviço novo deste cliente. Pode alterá-lo no próprio serviço.</p>
     <p class="note">O e-mail dá acesso à área de cliente: o cliente entra com esse endereço e vê apenas o seu histórico.</p>`;
-  openSheet(ex?"Editar cliente":"Novo cliente", body, `${delBtn(!!ex)}<span class="sp"></span><button class="btn" type="button" id="sh-cancel">Cancelar</button><button class="btn pri" type="button" id="sh-save">Guardar</button>`, close=>{
+  const vs=(ex?(ex.viaturas||[]):[]).map(v=>({viatura:v.viatura||"",matricula:v.matricula||""}));
+  const vRow=(v,i)=>`<div style="display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) 44px;gap:8px"><input data-vv="${i}" value="${esc(v.viatura)}" placeholder="Marca e modelo" data-sug="dl-via" autocomplete="off"><input data-vm="${i}" value="${esc(v.matricula)}" placeholder="AA-00-AA" autocapitalize="characters"><button class="btn sm" type="button" data-vdel="${i}" aria-label="Remover viatura">×</button></div>`;
+  openSheet(ex?"Editar cliente":"Novo cliente", body + dlist("dl-via",[...list("servicos").map(r=>r.viatura),...list("clientes").flatMap(c=>(c.viaturas||[]).map(v=>v.viatura))]), `${delBtn(!!ex)}<span class="sp"></span><button class="btn" type="button" id="sh-cancel">Cancelar</button><button class="btn pri" type="button" id="sh-save">Guardar</button>`, close=>{
     $("#sh-cancel").onclick=close;
     wireDelete(async()=>{ close(); try { await delItem("clientes",id); toast("Cliente apagado."); } catch(e){ writeErr(e); } });
+    const vbox=$("#k-vias"), vdraw=()=>{ vbox.innerHTML=vs.map(vRow).join("")||`<span class="note">Sem viaturas registadas na ficha.</span>`; };
+    vdraw();
+    $("#k-vadd").onclick=()=>{ vs.push({viatura:"",matricula:""}); vdraw(); vbox.querySelector(`[data-vv="${vs.length-1}"]`).focus(); };
+    vbox.addEventListener("input",e=>{ const t=e.target; if (t.dataset.vv!=null) vs[+t.dataset.vv].viatura=t.value; if (t.dataset.vm!=null) vs[+t.dataset.vm].matricula=t.value; });
+    vbox.addEventListener("click",e=>{ const b=e.target.closest("[data-vdel]"); if (!b) return; vs.splice(+b.dataset.vdel,1); vdraw(); });
     $("#sh-save").onclick=async()=>{ const nome=$("#k-nome").value.trim(); if (!nome){ toast("Indique o nome."); return; }
-      const rec=Object.assign({},ex?clean(ex):{},{cod:parseInt($("#k-cod").value,10)||cod,nome,nif:$("#k-nif").value.trim(),tel:$("#k-tel").value.trim(),email:$("#k-email").value.trim(),morada:$("#k-morada").value.trim(),descTipo:$("#k-desc").value,familia:$("#k-desc").value==="familia"});
+      const rec=Object.assign({},ex?clean(ex):{},{cod:parseInt($("#k-cod").value,10)||cod,nome,nif:$("#k-nif").value.trim(),tel:$("#k-tel").value.trim(),email:$("#k-email").value.trim(),morada:$("#k-morada").value.trim(),viaturas:vs.map(v=>({viatura:v.viatura.trim(),matricula:v.matricula.trim().toUpperCase()})).filter(v=>v.viatura||v.matricula),descTipo:$("#k-desc").value,familia:$("#k-desc").value==="familia"});
       const rid=id||newId("k"); close(); try { await putItem("clientes",rid,rec); queuePortal(nome); toast(ex?"Cliente atualizado.":"Cliente criado."); } catch(e){ writeErr(e); } };
   });
 }

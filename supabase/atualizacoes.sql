@@ -33,13 +33,20 @@ $$;
 -- Resposta do cliente: só uma vez, dentro do prazo, com campos limitados
 create or replace function public.atualizacao_responder(p_token text, p_dados jsonb) returns boolean
 language plpgsql security definer set search_path = public as $$
-declare d jsonb;
+declare d jsonb; vs jsonb;
 begin
   d := jsonb_strip_nulls(jsonb_build_object(
     'email',  nullif(left(trim(p_dados->>'email'), 120), ''),
     'tel',    nullif(left(trim(p_dados->>'tel'), 30), ''),
     'morada', nullif(left(trim(p_dados->>'morada'), 300), ''),
     'nif',    nullif(left(regexp_replace(coalesce(p_dados->>'nif',''), '\D', '', 'g'), 9), '')));
+  select jsonb_agg(v) into vs from (
+    select jsonb_build_object('viatura', left(trim(coalesce(e->>'viatura','')), 60),
+                              'matricula', upper(left(trim(coalesce(e->>'matricula','')), 15))) v
+      from jsonb_array_elements(case when jsonb_typeof(p_dados->'viaturas') = 'array' then p_dados->'viaturas' else '[]'::jsonb end) with ordinality t(e, n)
+     where trim(coalesce(e->>'viatura','')) <> '' or trim(coalesce(e->>'matricula','')) <> ''
+     order by n limit 6) x;
+  if vs is not null then d := d || jsonb_build_object('viaturas', vs); end if;
   if d = '{}'::jsonb then return false; end if;
   update public.atualizacoes set dados = d, estado = 'respondido', respondido_at = now()
    where token = p_token and estado = 'enviado' and expires_at > now();

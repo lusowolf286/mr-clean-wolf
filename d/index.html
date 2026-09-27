@@ -29,6 +29,13 @@ form{display:grid;gap:14px;margin-top:18px}
 .fld input,.fld textarea{min-height:48px;border:1px solid #44484E;background:var(--surface2);border-radius:12px;padding:10px 14px;width:100%}
 .fld textarea{min-height:84px;resize:vertical}
 .fld input[aria-invalid="true"]{border-color:var(--neg)}
+.cars{display:grid;gap:10px}
+.car{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) 44px;gap:8px;align-items:end}
+.car .fld input{min-width:0}
+.rm{min-height:48px;border-radius:12px;border:1px solid #44484E;background:var(--surface2);color:var(--muted);font-size:22px;cursor:pointer}
+.add{min-height:46px;border-radius:12px;border:1px dashed #5A5F66;background:none;color:var(--copper);font-weight:700;cursor:pointer}
+fieldset{border:0;padding:0;margin:0;display:grid;gap:10px}
+legend{font-size:13px;color:var(--muted);padding:0;margin-bottom:6px}
 .err{color:var(--neg);font-size:13px;margin:0}
 .btn{min-height:50px;border-radius:12px;border:1px solid var(--ruby2);background:var(--ruby);color:#fff;font-weight:700;cursor:pointer;width:100%}
 .btn:disabled{opacity:.6}
@@ -62,25 +69,33 @@ async function start(){
   if (error){ invalid("Não foi possível verificar o link. Tente de novo dentro de alguns minutos."); return; }
   if (!data || !data.valido){ invalid(data && data.estado && data.estado !== "enviado" ? "Os seus dados já foram enviados através deste link. Obrigado!" : "Este link já não é válido ou expirou."); return; }
   const nome = data.nome ? `, ${esc(data.nome)}` : "";
-  app.innerHTML = `<h1>Olá${nome}!</h1><p class="sub">Para mantermos a sua ficha de cliente atualizada, confirme ou indique os seus dados. Preencha apenas o que quiser atualizar.</p>
+  app.innerHTML = `<h1>Olá${nome}!</h1><p class="sub">Para mantermos a sua ficha de cliente atualizada, confirme ou indique os seus dados e as suas viaturas. Preencha apenas o que quiser atualizar.</p>
     <form id="f" novalidate>
       <label class="fld"><span>E-mail</span><input id="email" type="email" autocomplete="email" inputmode="email"></label>
       <label class="fld"><span>Telemóvel</span><input id="tel" type="tel" autocomplete="tel" inputmode="tel"></label>
       <label class="fld"><span>Morada</span><textarea id="morada" autocomplete="street-address" placeholder="Rua, n.º, código postal e localidade"></textarea></label>
       <label class="fld"><span>NIF (para a faturação)</span><input id="nif" inputmode="numeric" autocomplete="off" maxlength="11"></label>
+      <fieldset><legend>Viaturas</legend><div class="cars" id="cars"></div><button class="add" type="button" id="addcar">+ Adicionar outra viatura</button></fieldset>
       <p class="err" id="err" hidden></p>
       <button class="btn" id="send" type="submit">Enviar dados</button>
       <p class="note">Os dados são usados apenas para a prestação dos serviços e para a faturação, nos termos da <a href="../privacidade.html">política de privacidade</a>. O e-mail indicado passa a ser o de acesso à área de cliente.</p>
     </form>`;
+  const cars = $("#cars");
+  const carRow = () => `<div class="car"><label class="fld"><span>Marca e modelo</span><input data-via autocomplete="off" placeholder="Ex.: Renault Clio"></label><label class="fld"><span>Matrícula</span><input data-mat autocomplete="off" autocapitalize="characters" placeholder="AA-00-AA" maxlength="15"></label><button class="rm" type="button" aria-label="Remover viatura" data-rm>×</button></div>`;
+  const addCar = () => { if (cars.children.length >= 6) return; cars.insertAdjacentHTML("beforeend", carRow()); $("#addcar").hidden = cars.children.length >= 6; };
+  addCar();
+  $("#addcar").onclick = () => { addCar(); cars.lastElementChild.querySelector("[data-via]").focus(); };
+  cars.addEventListener("click", e => { const b = e.target.closest("[data-rm]"); if (!b) return; b.closest(".car").remove(); if (!cars.children.length) addCar(); $("#addcar").hidden = cars.children.length >= 6; });
   $("#f").addEventListener("submit", async e => {
     e.preventDefault();
-    const v = { email: $("#email").value.trim().toLowerCase(), tel: $("#tel").value.trim(), morada: $("#morada").value.trim(), nif: $("#nif").value.replace(/\D/g, "") };
+    const viaturas = [...cars.querySelectorAll(".car")].map(r => ({ viatura: r.querySelector("[data-via]").value.trim(), matricula: r.querySelector("[data-mat]").value.trim().toUpperCase() })).filter(x => x.viatura || x.matricula);
+    const v = { email: $("#email").value.trim().toLowerCase(), tel: $("#tel").value.trim(), morada: $("#morada").value.trim(), nif: $("#nif").value.replace(/\D/g, ""), viaturas };
     const bad = []; ["email","tel","nif"].forEach(k => $("#"+k).removeAttribute("aria-invalid"));
     if (v.email && !mailOk(v.email)) bad.push(["email","o e-mail"]);
     if (v.tel && !telOk(v.tel)) bad.push(["tel","o telemóvel"]);
     if (v.nif && !nifOk(v.nif)) bad.push(["nif","o NIF"]);
     const err = $("#err");
-    if (!v.email && !v.tel && !v.morada && !v.nif){ err.textContent = "Preencha pelo menos um campo."; err.hidden = false; return; }
+    if (!v.email && !v.tel && !v.morada && !v.nif && !viaturas.length){ err.textContent = "Preencha pelo menos um campo."; err.hidden = false; return; }
     if (bad.length){ bad.forEach(([k]) => $("#"+k).setAttribute("aria-invalid","true")); err.textContent = "Verifique " + bad.map(b => b[1]).join(", ") + "."; err.hidden = false; $("#"+bad[0][0]).focus(); return; }
     err.hidden = true; $("#send").disabled = true; $("#send").textContent = "A enviar…";
     const { data: ok, error } = await sb.rpc("atualizacao_responder", { p_token: token, p_dados: v });
