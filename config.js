@@ -4,6 +4,6 @@
 window.CW_CONFIG = {
   supabaseUrl: "https://nsivezaolaugdrwojfun.supabase.co",
   supabaseAnonKey: "sb_publishable_5TM2ArtrjOgxh8dhkKaYFw_apjCqHWf",
-  clienteLink: "https://mrcleanwolf.com/c",   // link curto para a área de cliente (redirecionamento na Cloudflare)
-  dadosLink: "https://mrcleanwolf.com/d#"     // link curto para a atualização de dados (idem)
+  clienteLink: "https://app.mrcleanwolf.com/c",   // link curto para a área de cliente (redirecionamento na Cloudflare)
+  dadosLink: "https://app.mrcleanwolf.com/d#"     // link curto para a atualização de dados (idem)
 };

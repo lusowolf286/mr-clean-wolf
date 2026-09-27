@@ -579,7 +579,7 @@ let portal=null; const pq=new Set(); let pT=null;
 function queuePortal(name){ if (!portal||!name) return; pq.add(name); clearTimeout(pT); pT=setTimeout(flushPortal,2000); }
 async function flushPortal(){ const names=[...pq]; pq.clear(); for (const n of names){ const c=clientByName(n); if (!c) continue; try { await portal.upsert(portalData(c)); } catch(e){ console.error("portal",e); } } }
 /* ---- envio do acesso à área de cliente por SMS (abre a app Mensagens com o texto preenchido) ---- */
-const CLIENTE_LINK = (window.CW_CONFIG && CW_CONFIG.clienteLink) || "https://mrcleanwolf.com/c";
+const CLIENTE_LINK = (window.CW_CONFIG && CW_CONFIG.clienteLink) || "https://app.mrcleanwolf.com/c";
 const semProto = u => String(u).replace(/^https?:\/\//,"");   // no SMS o link fica mais curto; o iPhone e o Android reconhecem-no na mesma
 function smsNumber(t){ let n=String(t||"").replace(/[^\d+]/g,""); if (n.startsWith("00")) n="+"+n.slice(2); if (/^9\d{8}$/.test(n)) n="+351"+n; return n; }
 async function smsAcesso(c){
