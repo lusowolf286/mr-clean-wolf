@@ -14,6 +14,7 @@
 <link rel="icon" type="image/png" href="../icons/cliente-192.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Manrope:wght@400;500;600;700&display=swap">
 <script src="../config.js"></script>
+<script src="../shared/ios.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
 <style>
 :root{--bg:#1E2124;--surface:#282B2F;--surface2:#303338;--line:#3C4046;--line2:#33363B;--ink:#F3ECE3;--muted:#A99F94;--gold:#E9AC3C;--copper:#F0BE90;--ruby:#6B0F1F;--ruby2:#9B1B30;--rubydeep:#420A14;--pos:#7CCB9F;--neg:#F28B7D;
@@ -120,32 +121,32 @@ const EST = { agendado:["Agendado","p-ag"], tratamento:["Em tratamento","p-tr"],
 const CACHE = "cw-cliente-cache";
 
 function login(email, msg, err){
-  app.innerHTML = `<div class="login"><h1>Área de cliente</h1>
+  app.innerHTML = `<form class="login" id="lf" novalidate><h1>Área de cliente</h1>
     <p class="sub" style="margin:0">Consulte o histórico dos serviços feitos à sua viatura.</p>
-    <label class="fld"><span>E-mail</span><input id="email" type="email" autocomplete="email" value="${esc(email||"")}"></label>
-    <button class="btn" id="send">Receber código de acesso</button>
+    <label class="fld"><span>E-mail</span><input id="email" type="email" autocomplete="email" enterkeyhint="send" value="${esc(email||"")}"></label>
+    <button class="btn" id="send" type="submit">Receber código de acesso</button>
     <p class="msg ${err?"err":""}">${esc(msg||"Use o e-mail que deu ao Mr Clean Wolf. Recebe um código de 6 dígitos.")}</p>
-    <p class="msg">Ao entrar, os seus dados são tratados nos termos da <a href="../privacidade.html">política de privacidade</a>.</p></div>`;
+    <p class="msg">Ao entrar, os seus dados são tratados nos termos da <a href="../privacidade.html">política de privacidade</a>.</p></form>`;
   const go = async () => {
     const e = $("#email").value.trim().toLowerCase(); if (!e) return;
     $("#send").disabled = true;
     const { error } = await sb.auth.signInWithOtp({ email:e, options:{ shouldCreateUser:true } });
     if (error) login(e, "Não foi possível enviar o código. Tente de novo dentro de alguns minutos.", true); else code(e);
   };
-  $("#send").onclick = go; $("#email").onkeydown = e => { if (e.key === "Enter") go(); };
+  $("#lf").onsubmit = e => { e.preventDefault(); go(); };
 }
 function code(email, err){
-  app.innerHTML = `<div class="login"><h1>Código de acesso</h1>
+  app.innerHTML = `<form class="login" id="cf" novalidate><h1>Código de acesso</h1>
     <p class="sub" style="margin:0">Enviámos um código para ${esc(email)}. Pode demorar um minuto a chegar.</p>
     <label class="fld"><span>Código</span><input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" style="letter-spacing:.3em;font-size:22px;text-align:center"></label>
-    <button class="btn" id="ok">Entrar</button><button class="btn ghost" id="back">Usar outro e-mail</button>
-    ${err?`<p class="msg err">Código inválido ou expirado.</p>`:""}</div>`;
+    <button class="btn" id="ok" type="submit">Entrar</button><button class="btn ghost" id="back" type="button">Usar outro e-mail</button>
+    ${err?`<p class="msg err">Código inválido ou expirado.</p>`:""}</form>`;
   const go = async () => {
-    const token = $("#code").value.trim(); if (!token) return;
+    const token = $("#code").value.replace(/\D/g, ""); if (!token) return;
     const { error } = await sb.auth.verifyOtp({ email, token, type:"email" });
     if (error) code(email, true); else load();
   };
-  $("#ok").onclick = go; $("#code").onkeydown = e => { if (e.key === "Enter") go(); };
+  $("#cf").onsubmit = e => { e.preventDefault(); go(); };
   $("#back").onclick = () => login(email); $("#code").focus();
 }
 
@@ -256,7 +257,7 @@ function booking(){
     ${pend >= 3 ? `<div class="banner">Já tem 3 pedidos a aguardar confirmação. Aguarde a resposta antes de fazer outro.</div>` : ""}
     <div class="form">
       <label class="fld"><span>Viatura</span><select id="bk-car">${cars.map((v,i)=>`<option value="${i}">${esc([v.viatura,v.matricula].filter(Boolean).join(" · ")||"Viatura")}</option>`).join("")}<option value="-1" ${cars.length?"":"selected"}>Outra viatura</option></select></label>
-      <div id="bk-new" class="form" style="margin:0" ${cars.length?"hidden":""}><label class="fld"><span>Marca e modelo</span><input id="bk-via" autocomplete="off"></label><label class="fld"><span>Matrícula</span><input id="bk-mat" autocomplete="off" style="text-transform:uppercase"></label></div>
+      <div id="bk-new" class="form" style="margin:0" ${cars.length?"hidden":""}><label class="fld"><span>Marca e modelo</span><input id="bk-via" autocomplete="off" autocapitalize="words"></label><label class="fld"><span>Matrícula</span><input id="bk-mat" autocomplete="off" autocapitalize="characters" style="text-transform:uppercase"></label></div>
       <div><div class="fld"><span>Serviços pretendidos</span></div>${(AG.servicos||[]).some(x=>x.req)?`<p class="msg" style="margin:4px 0 0">${esc((AG.servicos||[]).filter(x=>x.req).map(x=>x.l).join(", "))} só estão disponíveis com ${esc(((AG.servicos||[]).find(x=>x.k===(AG.servicos.find(y=>y.req)||{}).req)||{}).l||"descontaminação").toLowerCase()}.</p>`:""}${groups.map(g => `<div class="gl">${esc(g)}</div><div class="svs">${(AG.servicos||[]).filter(x=>x.g===g).map(x=>`<button type="button" data-sv="${esc(x.k)}" aria-pressed="false">${esc(x.l)}</button>`).join("")}</div>`).join("")}</div>
       <div><div class="fld"><span>Dia</span></div><div id="bk-cal">${months()}</div></div>
       <div><div class="fld"><span>Período</span></div><div class="seg" id="bk-per">${Object.entries(PER).map(([k,l])=>`<button type="button" data-per="${k}" aria-pressed="${f.periodo===k}">${l}</button>`).join("")}</div></div>

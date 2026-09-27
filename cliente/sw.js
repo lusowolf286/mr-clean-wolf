@@ -1,10 +1,11 @@
 /* Mr Clean Wolf — funcionamento sem rede (cliente) */
-const V = "cw-cliente-v7";
+const V = "cw-cliente-v8";
 const SHELL = [
   "./",
   "./index.html",
   "./manifest.webmanifest",
   "../config.js",
+  "../shared/ios.js",
   "../icons/wolf.png",
   "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js",
   "../icons/cliente-192.png",

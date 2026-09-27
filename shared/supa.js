@@ -27,8 +27,8 @@ function loginUI(){
   return new Promise(resolve => {
     const stepEmail = (msg) => {
       const el = overlay(`<h1 style="margin:0;font:700 24px Syne,sans-serif">Gestão</h1>
-        <label style="display:grid;gap:6px"><span style="font-size:13px;color:#A99F94">E-mail</span><input id="cw-email" type="email" autocomplete="email" style="${inputCss}"></label>
-        <button id="cw-send" style="${btnCss}">Enviar código</button>
+        <form id="cw-f" novalidate style="display:grid;gap:16px"><label style="display:grid;gap:6px"><span style="font-size:13px;color:#A99F94">E-mail</span><input id="cw-email" type="email" autocomplete="email" enterkeyhint="send" style="${inputCss}"></label>
+        <button id="cw-send" type="submit" style="${btnCss}">Enviar código</button></form>
         <p style="margin:0;font-size:13px;color:${msg?"#F28B7D":"#A99F94"}">${esc(msg||"Recebe um código de 6 dígitos no seu e-mail.")}</p>`);
       const go = async () => {
         const email = el.querySelector("#cw-email").value.trim().toLowerCase(); if (!email) return;
@@ -36,24 +36,22 @@ function loginUI(){
         const { error } = await sb.auth.signInWithOtp({ email, options:{ shouldCreateUser:false } });
         if (error) stepEmail("Não foi possível enviar o código: " + error.message); else stepCode(email);
       };
-      el.querySelector("#cw-send").onclick = go;
-      el.querySelector("#cw-email").onkeydown = e => { if (e.key === "Enter") go(); };
+      el.querySelector("#cw-f").onsubmit = e => { e.preventDefault(); go(); };
       el.querySelector("#cw-email").focus();
     };
     const stepCode = (email, msg) => {
       const el = overlay(`<h1 style="margin:0;font:700 24px Syne,sans-serif">Código de acesso</h1>
         <p style="margin:0;font-size:14px;color:#A99F94">Enviámos um código para ${esc(email)}.</p>
-        <input id="cw-code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" style="${inputCss};letter-spacing:.3em;font-size:22px;text-align:center">
-        <button id="cw-ok" style="${btnCss}">Entrar</button>
-        <button id="cw-back" style="${btnCss};background:#303338;border-color:#44484E">Usar outro e-mail</button>
+        <form id="cw-f" novalidate style="display:grid;gap:16px"><input id="cw-code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" aria-label="Código de acesso" style="${inputCss};letter-spacing:.3em;font-size:22px;text-align:center">
+        <button id="cw-ok" type="submit" style="${btnCss}">Entrar</button>
+        <button id="cw-back" type="button" style="${btnCss};background:#303338;border-color:#44484E">Usar outro e-mail</button></form>
         ${msg?`<p style="margin:0;font-size:13px;color:#F28B7D">${esc(msg)}</p>`:""}`);
       const go = async () => {
-        const token = el.querySelector("#cw-code").value.trim(); if (!token) return;
+        const token = el.querySelector("#cw-code").value.replace(/\D/g, ""); if (!token) return;
         const { data, error } = await sb.auth.verifyOtp({ email, token, type:"email" });
         if (error) stepCode(email, "Código inválido ou expirado."); else { el.remove(); resolve(data.session); }
       };
-      el.querySelector("#cw-ok").onclick = go;
-      el.querySelector("#cw-code").onkeydown = e => { if (e.key === "Enter") go(); };
+      el.querySelector("#cw-f").onsubmit = e => { e.preventDefault(); go(); };
       el.querySelector("#cw-back").onclick = () => stepEmail();
       el.querySelector("#cw-code").focus();
     };

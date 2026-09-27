@@ -70,6 +70,28 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 class MainViewController: CAPBridgeViewController {
     override open func capacitorDidLoad() {
         bridge?.registerPluginInstance(CWNativePlugin())
+        // Teclado (incluindo teclados de terceiros como o SwiftKey): a página recebe a altura e ajusta-se sozinha.
+        let nc = NotificationCenter.default
+        nc.addObserver(self, selector: #selector(keyboardChanged(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
+        nc.addObserver(self, selector: #selector(keyboardChanged(_:)), name: UIResponder.keyboardWillHideNotification, object: nil)
+        nc.addObserver(self, selector: #selector(keyboardChanged(_:)), name: UIResponder.keyboardDidShowNotification, object: nil)
+        webView?.scrollView.contentInsetAdjustmentBehavior = .never
+        webView?.scrollView.bounces = false
+    }
+
+    @objc func keyboardChanged(_ n: Notification) {
+        guard let v = view, let wv = webView else { return }
+        var h: CGFloat = 0
+        if n.name != UIResponder.keyboardWillHideNotification,
+           let f = (n.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue {
+            let local = v.convert(f, from: nil)
+            h = max(0, v.bounds.maxY - local.minY)
+        }
+        wv.evaluateJavaScript("window.__cwKb && window.__cwKb(\(Int(h)))", completionHandler: nil)
+        // o conteúdo é deslocado pela própria página; a vista nativa fica sempre no topo
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            if wv.scrollView.contentOffset != .zero { wv.scrollView.setContentOffset(.zero, animated: false) }
+        }
     }
     override var preferredStatusBarStyle: UIStatusBarStyle { .lightContent }
 }

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pt-PT">
+<html lang="pt-PT" class="fixed-layout">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -13,6 +13,7 @@
 <link rel="icon" type="image/png" href="../icons/icon-192.png">
 <style>body{margin:0}img{max-width:100%}</style>
 <script src="../config.js"></script>
+<script src="../shared/ios.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
 <script src="../shared/supa.js"></script>
 </head>
@@ -44,7 +45,7 @@ button,input,select,label,a,textarea{-webkit-tap-highlight-color:transparent;tou
 [hidden]{display:none!important}
 
 /* layout */
-.app{position:fixed;inset:0;background-color:var(--bg);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),repeating-linear-gradient(45deg,rgba(255,255,255,.018) 0 2px,transparent 2px 4px),repeating-linear-gradient(-45deg,rgba(0,0,0,.14) 0 2px,transparent 2px 4px);overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain}
+.app{position:fixed;inset:0;bottom:var(--kb,0px);background-color:var(--bg);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),repeating-linear-gradient(45deg,rgba(255,255,255,.018) 0 2px,transparent 2px 4px),repeating-linear-gradient(-45deg,rgba(0,0,0,.14) 0 2px,transparent 2px 4px);overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain}
 .app.lock{overflow:hidden}
 .side{display:none}
 .main{max-width:760px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-bottom:calc(120px + env(safe-area-inset-bottom,0px))}
@@ -159,14 +160,16 @@ h1.pg{font-family:var(--display);font-weight:700;font-size:28px;margin:0;line-he
 .btn:disabled{opacity:.5}
 
 /* sheet */
-.scrim{position:fixed;inset:0;z-index:20;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center;height:100dvh;padding-top:env(safe-area-inset-top,0px)}
-.sheet{background:var(--surface);width:100%;max-width:640px;max-height:calc(100dvh - env(safe-area-inset-top,0px) - 12px);border-radius:22px 22px 0 0;display:flex;flex-direction:column;overflow:hidden}
+.scrim{position:fixed;inset:0;z-index:20;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center;height:100dvh;padding-top:env(safe-area-inset-top,0px);padding-bottom:var(--kb,0px)}
+.sheet{background:var(--surface);width:100%;max-width:640px;max-height:calc(100dvh - env(safe-area-inset-top,0px) - 12px - var(--kb,0px));border-radius:22px 22px 0 0;display:flex;flex-direction:column;overflow:hidden}
 .sheet.wide{max-width:860px}
 @media(min-width:760px){.scrim{align-items:center}.sheet{border-radius:22px;max-height:92dvh}}
 .sh-h{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:3px solid var(--ruby)}
 .sh-h h2{font-family:var(--display);font-weight:700;font-size:19px;margin:0;flex:1;min-width:0}
 .x{border:0;background:var(--surface2);width:44px;height:44px;border-radius:12px;cursor:pointer;font-size:20px;line-height:1;color:var(--ink)}
 .sh-b{overflow:auto;padding:16px 18px;display:grid;gap:14px;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+.kb-open .sh-f{display:none}
+.kb-open .nav,.kb-open .fab{display:none}
 .sh-f{padding:12px 18px calc(12px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--line);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .sh-f .sp{flex:1}
 body.lock{overflow:hidden;position:fixed;width:100%}
@@ -379,7 +382,6 @@ function recCost(sv,cat){
   return { prod:r2(prod), cons:r2(cons), custo:r2(prod+cons), horas:Math.round(horas*100)/100, mo:r2(mo) };
 }
 const resOf = r => { const c=recCost(r.sv,r.cat); return r2((+r.fat||0) - extrasSum(r) - c.custo - c.mo); };
-function priorServices(cli, exceptId){ const t=(cli||"").trim().toLowerCase(); return list("servicos").filter(r=>r._id!==exceptId && (r.cli||"").trim().toLowerCase()===t).length; }
 function clientByName(n){ const t=(n||"").trim().toLowerCase(); return list("clientes").find(c=>(c.nome||"").trim().toLowerCase()===t); }
 const cliDesc = c => c ? (c.descTipo || (c.familia?"familia":"")) : "";
 const DESC_LBL = {familia:"Família", first:"First customer"};
@@ -547,15 +549,14 @@ async function smsAcesso(c){
   if (!c.email){ toast("Falta o e-mail do cliente: é com ele que entra na área de cliente."); return; }
   if (portal){ try { await portal.upsert(portalData(c)); } catch(e){ console.error("portal",e); } }
   const body=`Olá! Gostaríamos de convidá-lo a aceder à sua área de cliente onde poderá consultar o histórico dos seus serviços feitos connosco, bem como fazer marcações para os seus próximos serviços!\n${CLIENTE_LINK}\nEntre com o e-mail ${c.email}.`;
-  const ios=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1)||!!(window.Capacitor&&window.Capacitor.getPlatform&&window.Capacitor.getPlatform()==="ios");
-  const a=document.createElement("a"); a.href=`sms:${num}${ios?"&":"?"}body=${encodeURIComponent(body)}`; document.body.appendChild(a); a.click(); setTimeout(()=>a.remove(),1000);
+  openSms(num, body);
 }
 /* ---- pedido de atualização de dados (link único por SMS, sem conta) ---- */
 let atualApi=null, ATU=[];
 const DADOS_URL = (CLIENTE_LINK.includes("tinyurl") ? "https://lusowolf286.github.io/mr-clean-wolf" : CLIENTE_LINK.replace(/\/cliente\/?$/,"")) + "/d/#";
 async function loadAtual(){ if (!atualApi) return; try { ATU=await atualApi.list(); schedule(); } catch(e){ console.error("atualizacoes",e); } }
-function openSms(num, body){ const ios=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1)||!!(window.Capacitor&&window.Capacitor.getPlatform&&window.Capacitor.getPlatform()==="ios");
-  const a=document.createElement("a"); a.href=`sms:${num}${ios?"&":"?"}body=${encodeURIComponent(body)}`; document.body.appendChild(a); a.click(); setTimeout(()=>a.remove(),1000); }
+const IS_IOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1)||!!(window.Capacitor&&window.Capacitor.getPlatform&&window.Capacitor.getPlatform()==="ios");
+function openSms(num, body){ const a=document.createElement("a"); a.href=`sms:${num}${IS_IOS?"&":"?"}body=${encodeURIComponent(body)}`; document.body.appendChild(a); a.click(); setTimeout(()=>a.remove(),1000); }
 async function smsDados(c){
   if (!atualApi){ toast("Esta função precisa da ligação à base de dados."); return; }
   const num=smsNumber(c.tel); if (num.replace(/\D/g,"").length<9){ toast("Falta o telemóvel do cliente. Use \"Editar dados\"."); return; }
