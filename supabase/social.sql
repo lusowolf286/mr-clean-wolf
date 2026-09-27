@@ -11,6 +11,7 @@ create table if not exists public.social_privado (
 );
 alter table public.social_privado enable row level security;
 revoke all on public.social_privado from anon, authenticated;
+grant select, insert, update, delete on public.docs, public.admins, public.social_privado to service_role;
 
 -- 2. Recolha diária às 05:15 (UTC) — fecha os números do dia anterior.
 create extension if not exists pg_cron;
