@@ -9,8 +9,14 @@
 //   TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET   app de programador TikTok (Login Kit)
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-const SB = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
 const env = (k: string) => (Deno.env.get(k) || "").trim();
+// chave de servidor fornecida automaticamente pelo Supabase (formato antigo ou novo)
+function serverKey() {
+  const legacy = env("SUPABASE_SERVICE_ROLE_KEY"); if (legacy) return legacy;
+  const s = env("SUPABASE_SECRET_KEYS");
+  try { const o = JSON.parse(s); return String(o.default || Object.values(o)[0] || ""); } catch (_) { return s; }
+}
+const SB = createClient(env("SUPABASE_URL"), serverKey(), { auth: { persistSession: false, autoRefreshToken: false } });
 const G = "https://graph.facebook.com/v25.0";
 const TT = "https://open.tiktokapis.com/v2";
 const DOC = "config/social_auto";
