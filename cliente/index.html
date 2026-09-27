@@ -82,6 +82,7 @@ select,textarea{font-size:16px}
 .seg button[aria-pressed="true"]{background:var(--ruby);color:#fff}
 .svs{display:flex;flex-wrap:wrap;gap:6px}
 .svs button{min-height:40px;padding:0 12px;border-radius:10px;border:1px solid #3A3632;background:var(--surface2);font-size:14px;font-weight:600;cursor:pointer}
+.svs button:disabled{opacity:.35;cursor:default}
 .svs button[aria-pressed="true"]{background:var(--rubydeep);border-color:var(--ruby2);color:var(--copper)}
 .gl{font-size:11.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:8px 0 2px}
 .cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
@@ -256,7 +257,7 @@ function booking(){
     <div class="form">
       <label class="fld"><span>Viatura</span><select id="bk-car">${cars.map((v,i)=>`<option value="${i}">${esc([v.viatura,v.matricula].filter(Boolean).join(" · ")||"Viatura")}</option>`).join("")}<option value="-1" ${cars.length?"":"selected"}>Outra viatura</option></select></label>
       <div id="bk-new" class="form" style="margin:0" ${cars.length?"hidden":""}><label class="fld"><span>Marca e modelo</span><input id="bk-via" autocomplete="off"></label><label class="fld"><span>Matrícula</span><input id="bk-mat" autocomplete="off" style="text-transform:uppercase"></label></div>
-      <div><div class="fld"><span>Serviços pretendidos</span></div>${groups.map(g => `<div class="gl">${esc(g)}</div><div class="svs">${(AG.servicos||[]).filter(x=>x.g===g).map(x=>`<button type="button" data-sv="${esc(x.k)}" aria-pressed="false">${esc(x.l)}</button>`).join("")}</div>`).join("")}</div>
+      <div><div class="fld"><span>Serviços pretendidos</span></div>${(AG.servicos||[]).some(x=>x.req)?`<p class="msg" style="margin:4px 0 0">${esc((AG.servicos||[]).filter(x=>x.req).map(x=>x.l).join(", "))} só estão disponíveis com ${esc(((AG.servicos||[]).find(x=>x.k===(AG.servicos.find(y=>y.req)||{}).req)||{}).l||"descontaminação").toLowerCase()}.</p>`:""}${groups.map(g => `<div class="gl">${esc(g)}</div><div class="svs">${(AG.servicos||[]).filter(x=>x.g===g).map(x=>`<button type="button" data-sv="${esc(x.k)}" aria-pressed="false">${esc(x.l)}</button>`).join("")}</div>`).join("")}</div>
       <div><div class="fld"><span>Dia</span></div><div id="bk-cal">${months()}</div></div>
       <div><div class="fld"><span>Período</span></div><div class="seg" id="bk-per">${Object.entries(PER).map(([k,l])=>`<button type="button" data-per="${k}" aria-pressed="${f.periodo===k}">${l}</button>`).join("")}</div></div>
       <label class="fld"><span>Observações (opcional)</span><textarea id="bk-notas" placeholder="Ex.: pelo de animais, manchas nos bancos, horário de entrega…"></textarea></label>
@@ -266,7 +267,14 @@ function booking(){
   wireFooter(); window.scrollTo(0,0);
   $("#bk-back").onclick = () => render(ROWS, false);
   $("#bk-car").onchange = e => { f.car = +e.target.value; $("#bk-new").hidden = f.car !== -1; };
-  app.querySelectorAll("[data-sv]").forEach(b => b.onclick = () => { const k = b.dataset.sv; f.sv = f.sv.includes(k) ? f.sv.filter(x => x !== k) : [...f.sv, k]; b.setAttribute("aria-pressed", f.sv.includes(k)); });
+  const SVD = Object.fromEntries((AG.servicos||[]).map(x => [x.k, x]));
+  const svPaint = () => app.querySelectorAll("[data-sv]").forEach(b => { const d = SVD[b.dataset.sv] || {}; b.disabled = !!(d.req && !f.sv.includes(d.req)); b.setAttribute("aria-pressed", f.sv.includes(b.dataset.sv)); });
+  app.querySelectorAll("[data-sv]").forEach(b => b.onclick = () => { const k = b.dataset.sv, d = SVD[k] || {};
+    if (f.sv.includes(k)) f.sv = f.sv.filter(x => x !== k);
+    else { if (d.x) f.sv = f.sv.filter(x => (SVD[x]||{}).x !== d.x); f.sv.push(k); }
+    f.sv = f.sv.filter(x => { const r = (SVD[x]||{}).req; return !r || f.sv.includes(r); });
+    svPaint(); });
+  svPaint();
   $("#bk-cal").onclick = e => { const b = e.target.closest("[data-d]"); if (!b || b.disabled) return; f.d = b.dataset.d; $("#bk-cal").querySelectorAll("[data-d]").forEach(x => x.setAttribute("aria-pressed", x.dataset.d === f.d)); };
   $("#bk-per").onclick = e => { const b = e.target.closest("[data-per]"); if (!b) return; f.periodo = b.dataset.per; $("#bk-per").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x.dataset.per === f.periodo)); };
   $("#bk-send").onclick = async () => {

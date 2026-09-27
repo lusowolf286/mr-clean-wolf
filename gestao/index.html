@@ -284,10 +284,10 @@ const SV = [
   {k:"desc",c:"DE",l:"Descontaminação",g:"Lavagem"},
   {k:"int",c:"LPI",l:"Limpeza interior",g:"Lavagem"},
   {k:"pele",c:"TEP",l:"Tratamento de pele",g:"Lavagem"},
-  {k:"cera",c:"PE·C",l:"Selante cera",g:"Proteção",x:"prot"},
-  {k:"ceram",c:"PE·S",l:"Selante cerâmico",g:"Proteção",x:"prot"},
+  {k:"cera",c:"PE·C",l:"Selante cera",g:"Proteção",x:"prot",req:"desc"},
+  {k:"ceram",c:"PE·S",l:"Selante cerâmico",g:"Proteção",x:"prot",req:"desc"},
   {k:"wet",c:"PE·W",l:"Wet coat",g:"Proteção",x:"prot"},
-  {k:"dlux",c:"DLUX",l:"DLUX",g:"Proteção"},
+  {k:"dlux",c:"DLUX",l:"DLUX",g:"Proteção",req:"desc"},
   {k:"pol1",c:"Pol 1S",l:"Polimento 1 step",g:"Polimento",x:"pol"},
   {k:"pol2",c:"Pol 2S",l:"Polimento 2 step",g:"Polimento",x:"pol"},
   {k:"farA",c:"PolF A",l:"Faróis cat. A",g:"Polimento",x:"far"},
@@ -471,7 +471,7 @@ function agRule(d){ return !!AG.semana[new Date(d+"T12:00:00").getDay()]; }
 function agOpen(d){ return (agRule(d) && !AG.fechados.includes(d)) || AG.abertos.includes(d); }
 function agPublic(){ const t=today(); return { semana:AG.semana, capacidade:+AG.capacidade||1, antecedencia:+AG.antecedencia||0, horizonte:+AG.horizonte||60,
   fechados:AG.fechados.filter(d=>d>t).sort(), abertos:AG.abertos.filter(d=>d>t).sort(), cheios:agCheios(),
-  servicos:SV.map(x=>({k:x.k,l:x.l,g:x.g})), atualizado:t }; }
+  servicos:SV.map(x=>Object.assign({k:x.k,l:x.l,g:x.g},x.x?{x:x.x}:{},x.req?{req:x.req}:{})), atualizado:t }; }
 const agPublicKey = o => { const c=Object.assign({},o); delete c.atualizado; return c; };
 function queueAgSync(){ if (!agendaApi||!AG||readOnly) return; clearTimeout(agT); agT=setTimeout(async()=>{ const pub=agPublic(), key=JSON.stringify(agPublicKey(pub)); if (key===agPub) return; try { await agendaApi.set(pub); agPub=key; } catch(e){ console.error("agenda",e); } },2500); }
 const PER = { manha:"Manhã", tarde:"Tarde", indif:"Indiferente" };
