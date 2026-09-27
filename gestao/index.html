@@ -171,6 +171,9 @@ h1.pg{font-family:var(--display);font-weight:700;font-size:28px;margin:0;line-he
 .sh-f .sp{flex:1}
 body.lock{overflow:hidden;position:fixed;width:100%}
 .fld{display:grid;gap:5px;min-width:0;position:relative}
+.cacts{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.cacts .btn{display:flex;align-items:center;gap:10px;justify-content:flex-start;text-align:left;min-height:62px;padding:10px 14px;line-height:1.25;font-size:14.5px}
+.cacts .btn svg{width:22px;height:22px;flex:none;stroke:var(--copper);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 datalist{display:none}
 .sug{position:absolute;left:0;right:0;top:100%;margin-top:4px;z-index:40;background:var(--surface2);border:1px solid var(--ruby2);border-radius:12px;max-height:240px;overflow-y:auto;box-shadow:0 12px 28px rgba(0,0,0,.55);-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
 .sug button{display:block;width:100%;text-align:left;border:0;background:none;color:var(--ink);padding:12px 14px;min-height:46px;font-size:15px;cursor:pointer;border-bottom:1px solid var(--line)}
@@ -556,7 +559,8 @@ function openSms(num, body){ const ios=/iP(hone|ad|od)/.test(navigator.userAgent
 async function smsDados(c){
   if (!atualApi){ toast("Esta função precisa da ligação à base de dados."); return; }
   const num=smsNumber(c.tel); if (num.replace(/\D/g,"").length<9){ toast("Falta o telemóvel do cliente. Use \"Editar dados\"."); return; }
-  let token; try { token=await atualApi.create(c._id, c.nome); } catch(e){ writeErr(e); return; }
+  let token; try { token=await atualApi.create(c._id, c.nome); }
+  catch(e){ console.error(e); const m=String((e&&(e.code||""))+" "+(e&&e.message||"")); if (/42P01|PGRST205|atualizacoes/i.test(m)) toast("Falta ativar esta função no Supabase (ficheiro atualizacoes.sql)."); else writeErr(e); return; }
   openSms(num, `Olá! Para mantermos a sua ficha de cliente Mr Clean Wolf atualizada, pedimos que confirme os seus dados (e-mail, telemóvel, morada e NIF) neste link:\n${DADOS_URL}${token}\nO link é pessoal e válido durante 30 dias. Obrigado!`);
 }
 const ATU_F = [["email","E-mail"],["tel","Telemóvel"],["morada","Morada"],["nif","NIF"]];
@@ -1135,15 +1139,16 @@ function openCliente(cid){
   const body=`<div class="kpis" style="grid-template-columns:repeat(3,minmax(0,1fr))"><div class="kpi"><span class="lbl">Serviços</span><span class="v">${svc.length}</span></div><div class="kpi"><span class="lbl">Faturado</span><span class="v">${eur0(fat)}</span></div><div class="kpi"><span class="lbl">Resultado</span><span class="v gold">${eur0(rl)}</span></div></div>
     <div class="kv"><span>NIF</span><span>${esc(c.nif||"—")}</span><span>Telefone</span><span>${esc(c.tel||"—")}</span><span>E-mail</span><span>${esc(c.email||"—")}</span><span>Morada</span><span style="white-space:pre-line">${esc(c.morada||"—")}</span><span>Desconto</span><span>${cliDesc(c)?DESC_LBL[cliDesc(c)]+" ("+nf0.format(descRates()[cliDesc(c)]*100)+" %)":"—"}</span>
     ${vias.length?`<span>Viaturas</span><span>${vias.map(r=>esc([r.viatura,r.matricula].filter(Boolean).join(" · "))).join("<br>")}</span>`:""}</div>
+    <div class="cacts"><button class="btn" type="button" id="c-sms">${svgI("clientes")}<span>Enviar acesso<br>por SMS</span></button><button class="btn" type="button" id="c-dados">${svgI("faturas")}<span>Pedir atualização<br>de dados</span></button></div>
     <div class="card-h"><span class="lbl">Diário de serviços</span><button class="btn sm pri" type="button" id="c-new">+ Agendar</button></div>
     <div class="diary">${svc.map(r=>{ const e=est(r); return `<button type="button" class="dy" data-edit="servicos:${esc(r._id)}"><span class="h"><b>${fmtD(r.d)}</b>${r.hora?`<span class="muted">${esc(r.hora)}</span>`:""}<span class="pill ${EST[e][2]}">${EST[e][1]}</span><span class="muted">${esc([r.viatura,r.matricula].filter(Boolean).join(" · "))}</span><span style="margin-left:auto" class="n">${eur(r.fat)}</span></span>
       <span class="r-sub">${(r.sv||[]).map(k=>`<span class="chip">${esc(SVK[k]?SVK[k].l:k)}</span>`).join("")}${(r.extras||[]).map(x=>`<span class="chip">${esc(x.nome)}</span>`).join("")}</span>
       ${r.notas?`<span style="font-size:14px;white-space:pre-wrap">${esc(r.notas)}</span>`:""}
       ${(r.fotos||[]).length?`<span class="thumbs">${r.fotos.map(p=>photoImg(p,"")).join("")}</span>`:""}</button>`; }).join("")||`<div class="note">Ainda sem serviços.</div>`}</div>`;
-  openSheet(c.nome, body, `<button class="btn" type="button" id="c-sms" title="Enviar por SMS o link de acesso à área de cliente">Enviar acesso por SMS</button>${atualApi?`<button class="btn" type="button" id="c-dados" title="Enviar por SMS um pedido para o cliente atualizar os seus dados">Pedir atualização de dados</button>`:""}<span class="sp"></span><button class="btn" type="button" id="c-edit">Editar dados</button><button class="btn" type="button" id="sh-cancel">Fechar</button>`, close=>{
+  openSheet(c.nome, body, `<button class="btn" type="button" id="c-edit">Editar dados</button><span class="sp"></span><button class="btn" type="button" id="sh-cancel">Fechar</button>`, close=>{
     $("#sh-cancel").onclick=close; $("#c-edit").onclick=()=>{ close(); editCliente(cid); };
     $("#c-sms").onclick=()=>smsAcesso(c);
-    if ($("#c-dados")) $("#c-dados").onclick=()=>smsDados(c);
+    $("#c-dados").onclick=()=>smsDados(c);
     $("#c-new").onclick=()=>{ close(); editServico(null,{cli:c.nome}); };
     $("#sh-form").addEventListener("click",e=>{ const b=e.target.closest("[data-edit]"); if (!b) return; close(); editServico(b.dataset.edit.split(":")[1]); });
   }, true);
