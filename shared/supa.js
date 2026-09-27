@@ -240,6 +240,15 @@ const pedidos = {
   async update(id, patch){ const { error } = await sb.from("pedidos").update(Object.assign({}, patch, { updated_at: new Date().toISOString() })).eq("id", id); if (error) throw error; },
   subscribe(cb){ return sb.channel("pedidos-changes").on("postgres_changes", { event:"*", schema:"public", table:"pedidos" }, () => cb()).subscribe(); }
 };
+const atualizacoes = {
+  async create(cliente_id, nome){
+    const a = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789", r = crypto.getRandomValues(new Uint8Array(12));
+    const token = [...r].map(x => a[x % a.length]).join("");
+    const { error } = await sb.from("atualizacoes").insert({ token, cliente_id, nome }); if (error) throw error; return token;
+  },
+  async list(){ const { data, error } = await sb.from("atualizacoes").select("*").eq("estado","respondido").order("respondido_at"); if (error) throw error; return data || []; },
+  async update(id, estado){ const { error } = await sb.from("atualizacoes").update({ estado }).eq("id", id); if (error) throw error; }
+};
 const agenda = {
   async get(){ const { data, error } = await sb.from("agenda").select("dados").eq("id","config").maybeSingle(); if (error) throw error; return data ? data.dados : null; },
   async set(dados){ const { error } = await sb.from("agenda").upsert({ id:"config", dados, updated_at: new Date().toISOString() }); if (error) throw error; }
@@ -255,6 +264,7 @@ window.claude = {
     if (name === "portal") return s === "offline" ? null : portal;
     if (name === "pedidos") return s === "offline" ? null : pedidos;
     if (name === "agenda") return s === "offline" ? null : agenda;
+    if (name === "atualizacoes") return s === "offline" ? null : atualizacoes;
     return null;
   }
 };

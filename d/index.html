@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Atualização de dados — Mr Clean Wolf</title>
+<meta name="theme-color" content="#121212">
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="../icons/cliente-192.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Manrope:wght@400;600;700&display=swap">
+<script src="../config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
+<style>
+:root{--bg:#121212;--surface:#1D1C1B;--surface2:#262422;--line:#33302D;--ink:#F3ECE3;--muted:#A99F94;--gold:#E9AC3C;--copper:#F0BE90;--ruby:#6B0F1F;--ruby2:#9B1B30;--pos:#7CCB9F;--neg:#F28B7D;color-scheme:dark}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 Manrope,system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
+button,input,textarea{font:inherit;color:inherit}
+input,textarea{font-size:16px}
+.wrap{max-width:520px;margin:0 auto;padding:calc(14px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) calc(40px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.top{display:flex;align-items:center;gap:10px;padding:0 0 10px}
+.top img{width:52px;height:45px;object-fit:contain}
+.wm{line-height:1}.wm small{display:block;font:700 10px Syne,sans-serif;letter-spacing:.3em;color:var(--gold)}.wm span{font:800 19px Syne,sans-serif}
+.stripe{display:flex;flex-direction:column;gap:3px;margin:0 0 18px}.stripe i{height:4px;background:var(--ruby)}.stripe b{height:1px;background:var(--gold)}
+h1{font:700 26px/1.15 Syne,sans-serif;margin:6px 0 6px}
+.sub{color:var(--muted);margin:0}
+form{display:grid;gap:14px;margin-top:18px}
+.fld{display:grid;gap:6px}.fld span{font-size:13px;color:var(--muted)}
+.fld input,.fld textarea{min-height:48px;border:1px solid #3A3632;background:var(--surface2);border-radius:12px;padding:10px 14px;width:100%}
+.fld textarea{min-height:84px;resize:vertical}
+.fld input[aria-invalid="true"]{border-color:var(--neg)}
+.err{color:var(--neg);font-size:13px;margin:0}
+.btn{min-height:50px;border-radius:12px;border:1px solid var(--ruby2);background:var(--ruby);color:#fff;font-weight:700;cursor:pointer;width:100%}
+.btn:disabled{opacity:.6}
+.note{font-size:13px;color:var(--muted);margin:0}
+.note a{color:var(--copper)}
+.ok{background:#123024;border:1px solid #2B5C45;border-radius:14px;padding:16px;margin-top:18px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top"><img src="../icons/wolf.png" alt=""><div class="wm"><small>MR</small><span>CLEAN WOLF</span></div></header>
+  <div class="stripe" aria-hidden="true"><i></i><b></b></div>
+  <main id="app"><p class="sub">A carregar…</p></main>
+</div>
+<script>
+(() => {
+"use strict";
+const CFG = window.CW_CONFIG || {};
+const sb = CFG.supabaseUrl ? supabase.createClient(CFG.supabaseUrl, CFG.supabaseAnonKey, { auth:{ persistSession:false, autoRefreshToken:false, detectSessionInUrl:false } }) : null;
+const $ = s => document.querySelector(s), app = $("#app");
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const token = (location.hash.slice(1) || new URLSearchParams(location.search).get("t") || "").trim();
+const nifOk = n => { if (!/^\d{9}$/.test(n)) return false; let s = 0; for (let i = 0; i < 8; i++) s += +n[i] * (9 - i); const c = 11 - (s % 11); return (c >= 10 ? 0 : c) === +n[8]; };
+const telOk = t => /^\+?\d{9,15}$/.test(t.replace(/[\s()-]/g, ""));
+const mailOk = m => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(m);
+const invalid = msg => { app.innerHTML = `<h1>Link inválido</h1><p class="sub">${esc(msg)}</p><p class="note" style="margin-top:14px">Se precisar, contacte o Mr Clean Wolf pelo <a href="tel:+351912847096">912 847 096</a>.</p>`; };
+
+async function start(){
+  if (!sb || !token){ invalid("Este link está incompleto."); return; }
+  const { data, error } = await sb.rpc("atualizacao_info", { p_token: token });
+  if (error){ invalid("Não foi possível verificar o link. Tente de novo dentro de alguns minutos."); return; }
+  if (!data || !data.valido){ invalid(data && data.estado && data.estado !== "enviado" ? "Os seus dados já foram enviados através deste link. Obrigado!" : "Este link já não é válido ou expirou."); return; }
+  const nome = data.nome ? `, ${esc(data.nome)}` : "";
+  app.innerHTML = `<h1>Olá${nome}!</h1><p class="sub">Para mantermos a sua ficha de cliente atualizada, confirme ou indique os seus dados. Preencha apenas o que quiser atualizar.</p>
+    <form id="f" novalidate>
+      <label class="fld"><span>E-mail</span><input id="email" type="email" autocomplete="email" inputmode="email"></label>
+      <label class="fld"><span>Telemóvel</span><input id="tel" type="tel" autocomplete="tel" inputmode="tel"></label>
+      <label class="fld"><span>Morada</span><textarea id="morada" autocomplete="street-address" placeholder="Rua, n.º, código postal e localidade"></textarea></label>
+      <label class="fld"><span>NIF (para a faturação)</span><input id="nif" inputmode="numeric" autocomplete="off" maxlength="11"></label>
+      <p class="err" id="err" hidden></p>
+      <button class="btn" id="send" type="submit">Enviar dados</button>
+      <p class="note">Os dados são usados apenas para a prestação dos serviços e para a faturação, nos termos da <a href="../privacidade.html">política de privacidade</a>. O e-mail indicado passa a ser o de acesso à área de cliente.</p>
+    </form>`;
+  $("#f").addEventListener("submit", async e => {
+    e.preventDefault();
+    const v = { email: $("#email").value.trim().toLowerCase(), tel: $("#tel").value.trim(), morada: $("#morada").value.trim(), nif: $("#nif").value.replace(/\D/g, "") };
+    const bad = []; ["email","tel","nif"].forEach(k => $("#"+k).removeAttribute("aria-invalid"));
+    if (v.email && !mailOk(v.email)) bad.push(["email","o e-mail"]);
+    if (v.tel && !telOk(v.tel)) bad.push(["tel","o telemóvel"]);
+    if (v.nif && !nifOk(v.nif)) bad.push(["nif","o NIF"]);
+    const err = $("#err");
+    if (!v.email && !v.tel && !v.morada && !v.nif){ err.textContent = "Preencha pelo menos um campo."; err.hidden = false; return; }
+    if (bad.length){ bad.forEach(([k]) => $("#"+k).setAttribute("aria-invalid","true")); err.textContent = "Verifique " + bad.map(b => b[1]).join(", ") + "."; err.hidden = false; $("#"+bad[0][0]).focus(); return; }
+    err.hidden = true; $("#send").disabled = true; $("#send").textContent = "A enviar…";
+    const { data: ok, error } = await sb.rpc("atualizacao_responder", { p_token: token, p_dados: v });
+    if (error || !ok){ $("#send").disabled = false; $("#send").textContent = "Enviar dados"; err.textContent = error ? "Não foi possível enviar. Verifique a ligação e tente de novo." : "Este link já não é válido."; err.hidden = false; return; }
+    app.innerHTML = `<h1>Obrigado!</h1><div class="ok">Os seus dados foram enviados e vão ser atualizados na sua ficha de cliente.</div>`;
+  });
+}
+start();
+})();
+</script>
+</body>
+</html>
