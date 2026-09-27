@@ -14,6 +14,7 @@
 <style>body{margin:0}img{max-width:100%}</style>
 <script src="../config.js"></script>
 <script src="../shared/ios.js"></script>
+<script src="dashboard.js" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
 <script src="../shared/supa.js"></script>
 </head>
@@ -61,6 +62,25 @@ button,input,select,label,a,textarea{-webkit-tap-highlight-color:transparent;tou
 .wm span{font-family:var(--display);font-weight:800;font-size:17px}
 .yr{appearance:none;-webkit-appearance:none;border:1px solid #44484E;background:var(--surface);border-radius:999px;min-height:44px;padding:0 32px 0 16px;font-weight:600;font-variant-numeric:tabular-nums;
   background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 17px) 52%,calc(100% - 12px) 52%;background-size:5px 5px;background-repeat:no-repeat}
+.dsh{font:700 18px var(--display);margin:26px 0 12px}
+.tools .seg{flex-wrap:nowrap;overflow-x:auto;max-width:100%;scrollbar-width:none}.tools .seg::-webkit-scrollbar{display:none}.tools .seg button{white-space:nowrap}
+@media (max-width:600px){ .dl .vs,.hide-s{display:none} }
+.kpis.k4{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (min-width:900px){ .kpis.k4{grid-template-columns:repeat(4,minmax(0,1fr))} .socg{grid-template-columns:repeat(2,minmax(0,1fr))} }
+.kpi.dk .v{font-size:21px}
+.dl{font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:2px 5px;align-items:baseline}
+.dl.up{color:#9FE0BD}.dl.down{color:#F6B3AA}.dl .vs{color:var(--muted);font-size:11px}
+.meter{display:block;height:6px;border-radius:3px;background:#393C41;margin-top:4px;overflow:hidden}.meter i{display:block;height:100%;background:#BE8A2E;border-radius:3px}
+.lg{display:flex;gap:12px;font-size:12px;color:var(--muted)}.lg i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.lc{position:relative}.lc svg{width:100%;height:auto;display:block;touch-action:pan-y}.lc svg text{font-family:Manrope,system-ui,sans-serif}
+.tip{position:absolute;top:0;width:170px;background:#1E2124;border:1px solid #44484E;border-radius:10px;padding:8px 10px;font-size:12.5px;display:grid;gap:3px;pointer-events:none;box-shadow:0 8px 20px rgba(0,0,0,.4)}
+.tip i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px}
+.hb2{display:grid;gap:8px}.hb2 .r{display:grid;grid-template-columns:minmax(0,9.5em) minmax(0,1fr) auto;gap:10px;align-items:center;font-size:13.5px}
+.hb2 .l{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.hb2 .t{height:10px;background:#33363B;border-radius:4px;overflow:hidden}.hb2 .t i{display:block;height:100%;background:#BE8A2E;border-radius:0 4px 4px 0}
+.hb2 .n{font-variant-numeric:tabular-nums;color:var(--ink);font-weight:600;min-width:3.2em;text-align:right}
+.socg{display:grid;gap:12px}
+.sc .scv{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}.sc .scv b{font-size:26px;font-variant-numeric:tabular-nums}.sc .scv>span{color:var(--muted);font-size:13px}
+.spk{width:100%;height:34px;display:block}
 .bell{position:relative;width:44px;height:44px;border-radius:14px;border:1px solid #44484E;background:var(--surface);display:grid;place-items:center;cursor:pointer;color:var(--ink);flex:none}
 .bell svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .bell.has svg{stroke:var(--gold)}
@@ -325,6 +345,7 @@ const MES3 = ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov",
 const DIAS = ["domingo","segunda","terça","quarta","quinta","sexta","sábado"];
 
 const IC = {
+  dashboard:'<rect x="3" y="3" width="8" height="10" rx="1.5"/><rect x="13" y="3" width="8" height="6" rx="1.5"/><rect x="13" y="11" width="8" height="10" rx="1.5"/><rect x="3" y="15" width="8" height="6" rx="1.5"/>',
   sino:'<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
   resumo:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
   agenda:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
@@ -340,7 +361,7 @@ const IC = {
   exportar:'<path d="M12 3v12M7 10l5 5 5-5M4 19h16"/>',
   mais:'<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>'
 };
-const SECTIONS = [["resumo","Resumo"],["agenda","Agenda"],["servicos","Serviços"],["faturas","Faturas a emitir"],["clientes","Clientes"],["compras","Compras"],["banco","Banco"],["produtos","Produtos"],["stock","Stock"],["custos","Custos"],["precos","Preços"],["exportar","Exportar"]];
+const SECTIONS = [["resumo","Resumo"],["dashboard","Dashboard"],["agenda","Agenda"],["servicos","Serviços"],["faturas","Faturas a emitir"],["clientes","Clientes"],["compras","Compras"],["banco","Banco"],["produtos","Produtos"],["stock","Stock"],["custos","Custos"],["precos","Preços"],["exportar","Exportar"]];
 const MOBILE = [["resumo","Resumo"],["agenda","Agenda"],["servicos","Serviços"],["clientes","Clientes"],["mais","Mais"]];
 const svgI = k => `<svg viewBox="0 0 24 24" aria-hidden="true">${IC[k]||""}</svg>`;
 
@@ -661,10 +682,11 @@ function render(){
   const fabTabs={agenda:1,servicos:1,clientes:1,compras:1,banco:1,resumo:1};
   $("#fab").hidden = readOnly || online===false || !fabTabs[ui.tab];
   if (!ready){ m.innerHTML=`<div class="ph"><div class="t"><h1 class="pg">A carregar…</h1><div class="sub">A ler os seus registos.</div></div></div>`; return; }
-  const V={resumo:vResumo,agenda:vAgenda,servicos:vServicos,faturas:vFaturas,clientes:vClientes,compras:vCompras,banco:vBanco,produtos:vProdutos,stock:vStock,custos:vCustos,precos:vPrecos,exportar:vExportar,mais:vMais};
+  const V={resumo:vResumo,dashboard:()=>window.CWDash?window.CWDash.view():header("Dashboard","A carregar…"),agenda:vAgenda,servicos:vServicos,faturas:vFaturas,clientes:vClientes,compras:vCompras,banco:vBanco,produtos:vProdutos,stock:vStock,custos:vCustos,precos:vPrecos,exportar:vExportar,mais:vMais};
   const off = online===false ? `<div class="banner">Sem ligação à base de dados. Verifique a internet e o ficheiro config.js.</div>` : "";
   const a=document.activeElement, key=a&&m.contains(a)?focusKey(a):null, pos=a&&a.selectionStart;
   m.innerHTML = off + (V[ui.tab]||vResumo)();
+  if (ui.tab==="dashboard" && window.CWDash) window.CWDash.wire(m);
   queueAgSync();
   if (key){ const i=m.querySelector(key); if (i){ i.focus({preventScroll:true}); if (pos!=null&&i.id==="q") try{i.setSelectionRange(pos,pos);}catch(e){} } }
 }
@@ -700,7 +722,7 @@ function vResumo(){
   if (ui.year==="todos"){ labels=years().slice().reverse(); A=labels.map(()=>0); B=labels.map(()=>0); for (const r of svc){ const i=labels.indexOf(r.d.slice(0,4)); if(i>=0)A[i]+=+r.fat||0; } for (const r of comp){ const i=labels.indexOf(r.d.slice(0,4)); if(i>=0)B[i]+=+r.val||0; } }
   else { labels=MES3; A=Array(12).fill(0); B=Array(12).fill(0); for (const r of svc) A[+r.d.slice(5,7)-1]+=+r.fat||0; for (const r of comp) B[+r.d.slice(5,7)-1]+=+r.val||0; }
   const wide = window.matchMedia("(min-width:900px)").matches;
-  return header(`Resumo ${ui.year==="todos"?"geral":ui.year}`, `${svc.length} serviços entregues · ticket médio ${eur(ticket)}`, yearSel()) + `
+  return header(`Resumo ${ui.year==="todos"?"geral":ui.year}`, `${svc.length} serviços entregues · ticket médio ${eur(ticket)}`, `<span style="display:flex;gap:8px;align-items:center"><button class="btn" type="button" data-tab="dashboard">${svgI("dashboard")} Dashboard</button>${yearSel()}</span>`) + `
   <div class="kpis">
     <div class="kpi hero"><span class="lbl">Faturado</span><span class="v">${eur0(fat)}</span>${cmp||`<span class="h">${ui.year==="todos"?"desde 2020":ui.year}</span>`}</div>
     <div class="kpi"><span class="lbl">Resultado líquido</span><span class="v ${rl<0?"neg":"gold"}">${eur0(rl)}</span><span class="h">após produtos e mão de obra</span></div>
@@ -1323,6 +1345,7 @@ main.addEventListener("change",e=>{
   if (ui.tab==="produtos" && t.dataset.uso){ patchCustos({produtos:{[t.dataset.uso]:{emUso:t.checked}}}).then(()=>toast(t.checked?"Em uso.":"Retirado de uso."),writeErr); }
 });
 main.addEventListener("click", async e=>{
+  if (ui.tab==="dashboard" && window.CWDash && window.CWDash.click(e)) return;
   const g=e.target.closest("[data-go]"); if (g){ goto(g.dataset.go); return; }
   const ed=e.target.closest("[data-edit]"); if (ed){ if (readOnly||online===false) return; const [c,id]=ed.dataset.edit.split(":"); ({servicos:editServico,compras:editCompra,movimentos:editMov})[c](id); return; }
   const cl=e.target.closest("[data-cli]"); if (cl){ openCliente(cl.dataset.cli); return; }
@@ -1361,6 +1384,10 @@ main.addEventListener("click", async e=>{
 });
 document.addEventListener("keydown",e=>{ if (e.key==="Escape"&&sheetClose) sheetClose(); });
 window.addEventListener("resize",()=>{ clearTimeout(window.__rz); window.__rz=setTimeout(()=>{ if (ui.tab==="resumo") render(); },200); });
+
+/* ============ helpers para o dashboard (gestao/dashboard.js) ============ */
+window.__cw = { nf1, list, est, recCost, extrasSum, fatEst, stockEstimate, clientByName, openCliente, openSheet, header, esc, eur, eur0, nf0, nf2, fmtD, numIn, niceStep, toast, writeErr, schedule, SVK, MES3, $,
+  S:()=>S, CU:()=>CU(), AG:()=>AG, db:()=>db, pedidosApi:()=>pedidosApi };
 
 if (document.readyState==="loading") document.addEventListener("DOMContentLoaded",boot); else boot();
 })();

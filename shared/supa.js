@@ -236,6 +236,7 @@ const portal = {
 const pedidos = {
   async list(){ const { data, error } = await sb.from("pedidos").select("*").eq("estado","pendente").order("created_at"); if (error) throw error; return data || []; },
   async update(id, patch){ const { error } = await sb.from("pedidos").update(Object.assign({}, patch, { updated_at: new Date().toISOString() })).eq("id", id); if (error) throw error; },
+  async historico(desde){ const { data, error } = await sb.from("pedidos").select("id,estado,created_at,updated_at,dados").gte("created_at", desde).order("created_at"); if (error) throw error; return data || []; },
   subscribe(cb){ return sb.channel("pedidos-changes").on("postgres_changes", { event:"*", schema:"public", table:"pedidos" }, () => cb()).subscribe(); }
 };
 const atualizacoes = {

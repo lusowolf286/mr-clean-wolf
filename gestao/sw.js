@@ -1,9 +1,10 @@
 /* Mr Clean Wolf — funcionamento sem rede (gestao) */
-const V = "cw-gestao-v12";
+const V = "cw-gestao-v13";
 const SHELL = [
   "./",
   "./index.html",
   "./manifest.webmanifest",
+  "./dashboard.js",
   "../config.js",
   "../shared/ios.js",
   "../icons/wolf.png",
