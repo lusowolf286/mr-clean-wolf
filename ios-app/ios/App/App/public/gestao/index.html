@@ -79,6 +79,10 @@ button,input,select,label,a,textarea{-webkit-tap-highlight-color:transparent;tou
 .hb2 .l{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.hb2 .t{height:10px;background:#33363B;border-radius:4px;overflow:hidden}.hb2 .t i{display:block;height:100%;background:#BE8A2E;border-radius:0 4px 4px 0}
 .hb2 .n{font-variant-numeric:tabular-nums;color:var(--ink);font-weight:600;min-width:3.2em;text-align:right}
 .socg{display:grid;gap:12px}
+.sc{display:grid;gap:8px;align-content:start}
+.sc .chip.ok{color:var(--pos);border-color:#2E5A43}.sc .chip.bad{color:var(--neg);border-color:#6A3530}
+.sca{display:flex;gap:8px;flex-wrap:wrap;margin-top:2px}
+.dsh-h{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:26px 0 12px}.dsh-h .dsh{margin:0}
 .sc .scv{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}.sc .scv b{font-size:26px;font-variant-numeric:tabular-nums}.sc .scv>span{color:var(--muted);font-size:13px}
 .spk{width:100%;height:34px;display:block}
 .bell{position:relative;width:44px;height:44px;border-radius:14px;border:1px solid #44484E;background:var(--surface);display:grid;place-items:center;cursor:pointer;color:var(--ink);flex:none}
@@ -575,19 +579,20 @@ let portal=null; const pq=new Set(); let pT=null;
 function queuePortal(name){ if (!portal||!name) return; pq.add(name); clearTimeout(pT); pT=setTimeout(flushPortal,2000); }
 async function flushPortal(){ const names=[...pq]; pq.clear(); for (const n of names){ const c=clientByName(n); if (!c) continue; try { await portal.upsert(portalData(c)); } catch(e){ console.error("portal",e); } } }
 /* ---- envio do acesso à área de cliente por SMS (abre a app Mensagens com o texto preenchido) ---- */
-const CLIENTE_LINK = (window.CW_CONFIG && CW_CONFIG.clienteLink) || "https://tinyurl.com/2xos4nxs";
+const CLIENTE_LINK = (window.CW_CONFIG && CW_CONFIG.clienteLink) || "https://app.mrcleanwolf.com/c";
+const semProto = u => String(u).replace(/^https?:\/\//,"");   // no SMS o link fica mais curto; o iPhone e o Android reconhecem-no na mesma
 function smsNumber(t){ let n=String(t||"").replace(/[^\d+]/g,""); if (n.startsWith("00")) n="+"+n.slice(2); if (/^9\d{8}$/.test(n)) n="+351"+n; return n; }
 async function smsAcesso(c){
   const num=smsNumber(c.tel);
   if (num.replace(/\D/g,"").length<9){ toast("Falta o telemóvel do cliente. Use \"Editar dados\"."); return; }
   if (!c.email){ toast("Falta o e-mail do cliente: é com ele que entra na área de cliente."); return; }
   if (portal){ try { await portal.upsert(portalData(c)); } catch(e){ console.error("portal",e); } }
-  const body=`Olá! Gostaríamos de convidá-lo a aceder à sua área de cliente onde poderá consultar o histórico dos seus serviços feitos connosco, bem como fazer marcações para os seus próximos serviços!\n${CLIENTE_LINK}\nEntre com o e-mail ${c.email}.`;
+  const body=`Olá! Gostaríamos de convidá-lo a aceder à sua área de cliente onde poderá consultar o histórico dos seus serviços feitos connosco, bem como fazer marcações para os seus próximos serviços!\n${semProto(CLIENTE_LINK)}\nEntre com o e-mail ${c.email}.`;
   openSms(num, body);
 }
 /* ---- pedido de atualização de dados (link único por SMS, sem conta) ---- */
 let atualApi=null, ATU=[];
-const DADOS_URL = (CLIENTE_LINK.includes("tinyurl") ? "https://lusowolf286.github.io/mr-clean-wolf" : CLIENTE_LINK.replace(/\/cliente\/?$/,"")) + "/d/#";
+const DADOS_URL = (window.CW_CONFIG && CW_CONFIG.dadosLink) || "https://lusowolf286.github.io/mr-clean-wolf/d/#";
 async function loadAtual(){ if (!atualApi) return; try { ATU=await atualApi.list(); schedule(); } catch(e){ console.error("atualizacoes",e); } }
 const IS_IOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1)||!!(window.Capacitor&&window.Capacitor.getPlatform&&window.Capacitor.getPlatform()==="ios");
 function openSms(num, body){ const a=document.createElement("a"); a.href=`sms:${num}${IS_IOS?"&":"?"}body=${encodeURIComponent(body)}`; document.body.appendChild(a); a.click(); setTimeout(()=>a.remove(),1000); }
@@ -596,7 +601,7 @@ async function smsDados(c){
   const num=smsNumber(c.tel); if (num.replace(/\D/g,"").length<9){ toast("Falta o telemóvel do cliente. Use \"Editar dados\"."); return; }
   let token; try { token=await atualApi.create(c._id, c.nome); }
   catch(e){ console.error(e); const m=String((e&&(e.code||""))+" "+(e&&e.message||"")); if (/42P01|PGRST205|atualizacoes/i.test(m)) toast("Falta ativar esta função no Supabase (ficheiro atualizacoes.sql)."); else writeErr(e); return; }
-  openSms(num, `Olá! Para mantermos a sua ficha de cliente Mr Clean Wolf atualizada, pedimos que confirme os seus dados (e-mail, telemóvel, morada, NIF e viaturas) neste link:\n${DADOS_URL}${token}\nO link é pessoal e válido durante 30 dias. Obrigado!`);
+  openSms(num, `Olá! Para mantermos a sua ficha de cliente Mr Clean Wolf atualizada, pedimos que confirme os seus dados (e-mail, telemóvel, morada, NIF e viaturas) neste link:\n${semProto(DADOS_URL)}${token}\nO link é pessoal e válido durante 30 dias. Obrigado!`);
 }
 const matKey = m => String(m||"").toUpperCase().replace(/[^A-Z0-9]/g,"");
 function viasDe(c){ const m=new Map(); const add=v=>{ if (!v||(!v.viatura&&!v.matricula)) return; const k=matKey(v.matricula)||("v:"+String(v.viatura).toLowerCase()); if (!m.has(k)) m.set(k,{viatura:v.viatura||"",matricula:v.matricula||""}); };
