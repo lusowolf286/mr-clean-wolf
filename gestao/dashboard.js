@@ -97,9 +97,10 @@ function delta(cur, prev, invert, vsTxt){
   return `<span class="dl ${good ? "up" : "down"}"><span aria-hidden="true">${d >= 0 ? "▲" : "▼"}</span> ${fmtPct(d)} <span class="vs">${vsTxt || "vs período anterior"}</span></span>`;
 }
 function spark(vals, color){
-  const W = 120, H = 32, mx = Math.max(1, ...vals), n = vals.length;
-  const pts = vals.map((v,i) => `${(i/(n-1||1))*(W-4)+2},${H-3-(v/mx)*(H-8)}`).join(" ");
-  return `<svg class="spk" viewBox="0 0 ${W} ${H}" aria-hidden="true"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/><circle cx="${pts.split(" ").pop().split(",")[0]}" cy="${pts.split(" ").pop().split(",")[1]}" r="3" fill="${color}"/></svg>`;
+  // ocupa a largura do cartão; escala entre o mínimo e o máximo para se ver a tendência
+  const W = 300, H = 36, n = vals.length, lo = Math.min(...vals), hi = Math.max(...vals), span = hi - lo || Math.max(1, hi * 0.1);
+  const pts = vals.map((v,i) => `${((i/(n-1||1))*(W-2)+1).toFixed(1)},${(H-3-((v-lo)/span)*(H-8)).toFixed(1)}`).join(" ");
+  return `<svg class="spk" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg>`;
 }
 function tile(label, value, sub, extra){ return `<div class="kpi dk"><span class="lbl">${label}</span><span class="v">${value}</span>${sub||""}${extra||""}</div>`; }
 
@@ -125,43 +126,109 @@ function hbars(items, fmt){
   return `<div class="hb2">${items.map(i => `<div class="r" title="${i.l}: ${fmt(i.v)}"><span class="l">${i.l}</span><span class="t"><i style="width:${i.v ? Math.max(2, i.v/mx*100) : 0}%"></i></span><span class="n">${fmt(i.v)}</span></div>`).join("")}</div>`;
 }
 
-/* ---------- redes sociais (registo manual até haver ligação automática) ---------- */
-const NETS = [["instagram","Instagram"],["facebook","Facebook"],["tiktok","TikTok"],["google","Perfil Google"]];
-const NET_F = { instagram:[["seg","Seguidores"],["alcance","Alcance"],["interacoes","Interações"],["posts","Publicações"],["mensagens","Mensagens / pedidos"]],
-  facebook:[["seg","Seguidores"],["alcance","Alcance"],["interacoes","Interações"],["posts","Publicações"],["mensagens","Mensagens / pedidos"]],
-  tiktok:[["seg","Seguidores"],["alcance","Visualizações"],["interacoes","Interações"],["posts","Vídeos"],["mensagens","Mensagens / pedidos"]],
-  google:[["seg","Avaliações"],["alcance","Visualizações do perfil"],["interacoes","Chamadas e direções"],["posts","Publicações"],["mensagens","Nota média (1–5)"]] };
+/* ---------- redes sociais: recolha automática diária (função social-sync) + registo manual ---------- */
+const NETS = [["instagram","Instagram"],["facebook","Facebook"],["tiktok","TikTok"],["youtube","YouTube"]];
+const NET_F = { instagram:[["seg","Seguidores"],["alcance","Visualizações"],["interacoes","Interações"],["posts","Publicações"],["mensagens","Mensagens / pedidos"]],
+  facebook:[["seg","Seguidores"],["alcance","Visualizações"],["interacoes","Interações"],["posts","Publicações"],["mensagens","Mensagens / pedidos"]],
+  tiktok:[["seg","Seguidores"],["alcance","Visualizações"],["interacoes","Gostos"],["posts","Vídeos"],["mensagens","Mensagens / pedidos"]],
+  youtube:[["seg","Subscritores"],["alcance","Visualizações"],["interacoes","Interações"],["posts","Vídeos"],["mensagens","Comentários / pedidos"]] };
+let SAUTO = null, SOCAPI = null, socBusy = false;
+/* agrega os dias recolhidos em meses: seguidores = último valor do mês; o resto soma */
+function autoMonths(r){
+  const out = {}, dias = (r && r.dias) || {};
+  for (const d of Object.keys(dias).sort()){
+    const v = dias[d], m = d.slice(0,7), o = out[m] || (out[m] = {});
+    if (v.seg != null) o.seg = v.seg;
+    if (v.vis != null) o.alcance = (o.alcance || 0) + v.vis;
+    if (v.inter != null) o.interacoes = (o.interacoes || 0) + v.inter;
+    if (v.novos != null) o.posts = (o.posts || 0) + v.novos;
+  }
+  return out;
+}
+function netData(k){
+  const man = (SOCIAL && SOCIAL.redes && SOCIAL.redes[k]) || {}, au = (SAUTO && SAUTO.redes && SAUTO.redes[k]) || null;
+  const am = au ? autoMonths(au) : {}, reg = {};
+  for (const m of new Set([...Object.keys(man.registos || {}), ...Object.keys(am)])) reg[m] = Object.assign({}, (man.registos || {})[m], am[m]);
+  return { handle: (au && au.conta) || man.handle || "", reg, au };
+}
+function fmtWhen(iso){ const d = new Date(iso); return `${pad(d.getDate())}/${pad(d.getMonth()+1)} às ${pad(d.getHours())}:${pad(d.getMinutes())}`; }
 function socialSection(){
-  const h = D(), red = (SOCIAL && SOCIAL.redes) || {};
+  const h = D();
   const cards = NETS.map(([k,l]) => {
-    const r = red[k] || {}, ms = Object.keys(r.registos || {}).sort(), last = ms.length ? r.registos[ms[ms.length-1]] : null, prev = ms.length > 1 ? r.registos[ms[ms.length-2]] : null;
-    const F = NET_F[k];
-    if (!last) return `<div class="card sc"><div class="card-h"><span class="lbl">${l}</span>${r.handle ? `<span class="note">${h.esc(r.handle)}</span>` : ""}</div><p class="note" style="margin:0">Ainda sem registos.</p><button class="btn sm" type="button" data-soc="${k}">Registar mês</button></div>`;
+    const { handle, reg, au } = netData(k), F = NET_F[k];
+    const ms = Object.keys(reg).sort(), last = ms.length ? reg[ms[ms.length-1]] : null, prev = ms.length > 1 ? reg[ms[ms.length-2]] : null;
+    const auto = au && au.ligado, erro = au && au.erro;
+    const st = auto && !erro ? `<span class="chip ok">automático</span>` : erro ? `<span class="chip bad">erro</span>` : `<span class="chip">manual</span>`;
+    const stTxt = erro ? `<p class="note neg" style="margin:0">Ligação com erro: ${h.esc(String(erro).slice(0,140))}</p>`
+      : auto ? `<p class="note" style="margin:0">Atualizado ${au.ok_at ? fmtWhen(au.ok_at) : "—"}</p>` : "";
+    const ligarTT = k === "tiktok" && SOCAPI && !auto ? `<button class="btn sm" type="button" data-soctt="1">Ligar TikTok</button>` : "";
+    const regBtn = `<button class="btn sm" type="button" data-soc="${k}">${auto ? "Registo manual" : "Registar mês"}</button>`;
+    const acts = `<div class="sca">${ligarTT}${regBtn}</div>`;
+    if (!last) return `<div class="card sc"><div class="card-h"><span class="lbl">${l}</span>${st}</div>${handle ? `<p class="note" style="margin:0">${h.esc(handle)}</p>` : ""}<p class="note" style="margin:0">Ainda sem dados.</p>${stTxt}${acts}</div>`;
+    // seguidores: série diária quando há recolha automática, senão mensal
+    let serie = [], dSeg = "";
+    if (au && au.dias){
+      const ds_ = Object.keys(au.dias).filter(d => au.dias[d].seg != null).sort();
+      serie = ds_.slice(-90).map(d => au.dias[d].seg);
+      if (ds_.length > 1){ const lastD = ds_[ds_.length-1], ref = ds_.filter(d => d <= addD(lastD, -28)).pop(); if (ref) dSeg = delta(au.dias[lastD].seg, au.dias[ref].seg, false, "em 30 dias"); }
+    }
+    if (serie.length < 2) serie = ms.map(m => +reg[m].seg || 0);
+    if (!dSeg && prev && prev.seg != null) dSeg = delta(last.seg || 0, prev.seg || 0, false, "vs mês anterior");
     const eng = last.alcance ? (last.interacoes || 0) / last.alcance : 0;
-    return `<div class="card sc"><div class="card-h"><span class="lbl">${l}</span><span class="note">${h.esc(r.handle || "")} · ${ms[ms.length-1].slice(5)}/${ms[ms.length-1].slice(0,4)}</span></div>
-      <div class="scv"><b>${h.nf0.format(last.seg || 0)}</b><span>${F[0][1].toLowerCase()}</span>${prev ? delta(last.seg||0, prev.seg||0, false, "vs mês anterior") : ""}</div>
-      ${ms.length > 1 ? spark(ms.map(m => +r.registos[m].seg || 0), C_MAIN) : ""}
-      <div class="kv"><span>${F[1][1]}</span><span>${h.nf0.format(last.alcance || 0)}</span>${k === "google" ? `<span>${F[4][1]}</span><span>${last.mensagens || "—"}</span>` : `<span>Envolvimento</span><span>${eng ? (eng*100).toFixed(1).replace(".",",") + " %" : "—"}</span><span>${F[4][1]}</span><span>${h.nf0.format(last.mensagens || 0)}</span>`}</div>
-      <button class="btn sm" type="button" data-soc="${k}">Registar mês</button></div>`;
+    const mLbl = `${ms[ms.length-1].slice(5)}/${ms[ms.length-1].slice(0,4)}`;
+    const fmtN = v => v == null ? "—" : h.nf0.format(v);
+    return `<div class="card sc"><div class="card-h"><span class="lbl">${l}</span>${st}</div>
+      ${handle ? `<p class="note" style="margin:0">${h.esc(handle)}</p>` : ""}
+      <div class="scv"><b>${fmtN(last.seg)}</b><span>${F[0][1].toLowerCase()}</span>${dSeg}</div>
+      ${serie.length > 1 ? spark(serie, C_MAIN) : ""}
+      <div class="kv"><span>${F[1][1]} (${mLbl})</span><span>${fmtN(last.alcance)}</span>
+        <span>${F[2][1]}</span><span>${fmtN(last.interacoes)}</span>
+        <span>Envolvimento</span><span>${eng ? (eng*100).toFixed(1).replace(".",",") + " %" : "—"}</span>
+        <span>${F[3][1]}</span><span>${fmtN(last.posts)}</span>
+        ${last.mensagens != null ? `<span>${F[4][1]}</span><span>${fmtN(last.mensagens)}</span>` : ""}</div>
+      ${stTxt}${acts}</div>`;
   }).join("");
-  return `<h2 class="dsh">Redes sociais</h2>
-    <p class="note" style="margin:-4px 0 10px">Registo mensal manual. A ligação automática às contas da marca é configurada numa fase seguinte.</p>
+  const anyAuto = SAUTO && SAUTO.redes && Object.values(SAUTO.redes).some(r => r.ligado);
+  const sub = anyAuto ? `Recolha automática todos os dias de madrugada${SAUTO.sync_at ? ` · última ${fmtWhen(SAUTO.sync_at)}` : ""}. As redes por ligar usam o registo mensal manual.`
+    : "Registo mensal manual até cada rede ser ligada (as chaves de acesso são guardadas no Supabase).";
+  return `<div class="dsh-h"><h2 class="dsh">Redes sociais</h2>${SOCAPI ? `<button class="btn sm" type="button" data-socsync="1"${socBusy ? " disabled" : ""}>${socBusy ? "A atualizar…" : "Atualizar agora"}</button>` : ""}</div>
+    <p class="note" style="margin:-4px 0 10px">${sub}</p>
     <div class="socg">${cards}</div>`;
 }
+async function socSync(){
+  const h = D(); if (!SOCAPI || socBusy) return;
+  socBusy = true; h.schedule();
+  try {
+    const r = await SOCAPI.sync();
+    const errs = r && r.redes ? Object.entries(r.redes).filter(([,v]) => v.ligado && v.erro).map(([k]) => NETS.find(n => n[0] === k)?.[1] || k) : [];
+    h.toast(r && r.ignorado ? "Os números foram atualizados há instantes." : errs.length ? `Atualizado, com erro em: ${errs.join(", ")}.` : "Redes sociais atualizadas.");
+  } catch(e){ h.toast("Não foi possível atualizar: " + (e.message || e)); }
+  finally { socBusy = false; h.schedule(); }
+}
+async function ligarTikTok(){
+  const h = D(); if (!SOCAPI) return;
+  const w = window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform() ? null : window.open("", "_blank");
+  try {
+    const { url } = await SOCAPI.tiktokUrl();
+    if (w) w.location.href = url; else window.open(url, "_blank");
+    h.toast("Autorize o acesso no TikTok e volte à app.");
+  } catch(e){ if (w) w.close(); h.toast(e.message || String(e)); }
+}
 function editSocial(k){
-  const h = D(), l = NETS.find(n => n[0] === k)[1], F = NET_F[k];
+  const h = D(), l = NETS.find(n => n[0] === k)[1], F = NET_F[k], auto = SAUTO && SAUTO.redes && SAUTO.redes[k] && SAUTO.redes[k].ligado;
   const red = JSON.parse(JSON.stringify((SOCIAL && SOCIAL.redes) || {})); red[k] = red[k] || { handle:"", registos:{} };
   const now = new Date(), mKey = `${now.getFullYear()}-${pad(now.getMonth()+1)}`, cur = red[k].registos[mKey] || {};
-  const body = `<label class="fld"><span class="lbl">Conta</span><input id="so-h" value="${h.esc(red[k].handle || "")}" placeholder="${k === "google" ? "Nome do perfil" : "@mrcleanwolf"}" autocapitalize="off"></label>
+  const FF = auto ? F.filter(([f]) => f === "mensagens") : F;
+  const body = `<label class="fld"><span class="lbl">Conta</span><input id="so-h" value="${h.esc(red[k].handle || "")}" placeholder="@mrcleanwolf" autocapitalize="off"></label>
     <label class="fld"><span class="lbl">Mês</span><input id="so-m" type="month" value="${mKey}"></label>
-    <div class="two">${F.map(([f,t]) => `<label class="fld"><span class="lbl">${t}</span><input data-sf="${f}" inputmode="decimal" value="${cur[f] ?? ""}"></label>`).join("")}</div>
-    <p class="note">Os valores estão nas estatísticas de cada rede (Instagram: Painel profissional; Facebook: Meta Business Suite; Google: Perfil da empresa).</p>`;
+    <div class="two">${FF.map(([f,t]) => `<label class="fld"><span class="lbl">${t}</span><input data-sf="${f}" inputmode="decimal" value="${cur[f] ?? ""}"></label>`).join("")}</div>
+    <p class="note">${auto ? "Esta rede está ligada: seguidores, visualizações, interações e publicações entram sozinhos. Aqui regista apenas o que a ligação não recolhe." : "Os valores estão nas estatísticas de cada rede (Instagram: Painel profissional; Facebook: Meta Business Suite; TikTok: Estatísticas; YouTube: YouTube Studio)."}</p>`;
   h.openSheet(`${l} — registo mensal`, body, `<span class="sp"></span><button class="btn" type="button" id="sh-cancel">Cancelar</button><button class="btn pri" type="button" id="sh-save">Guardar</button>`, close => {
     h.$("#sh-cancel").onclick = close;
     h.$("#so-m").onchange = e => { const r = red[k].registos[e.target.value] || {}; document.querySelectorAll("[data-sf]").forEach(i => i.value = r[i.dataset.sf] ?? ""); };
     h.$("#sh-save").onclick = async () => {
       const m = h.$("#so-m").value; if (!m){ h.toast("Indique o mês."); return; }
-      const rec = {}; document.querySelectorAll("[data-sf]").forEach(i => { if (i.value.trim() !== "") rec[i.dataset.sf] = h.numIn(i.value); });
+      const rec = Object.assign({}, red[k].registos[m]); document.querySelectorAll("[data-sf]").forEach(i => { if (i.value.trim() !== "") rec[i.dataset.sf] = h.numIn(i.value); else delete rec[i.dataset.sf]; });
       red[k].handle = h.$("#so-h").value.trim(); red[k].registos[m] = rec;
       close();
       try { await h.db().doc("config/social").set(Object.assign({}, SOCIAL || {}, { redes: red })); h.toast("Registo guardado."); }
@@ -173,7 +240,11 @@ function editSocial(k){
 /* ---------- vista ---------- */
 function view(){
   const h = D();
-  if (!socialSub && h.db()){ socialSub = true; h.db().doc("config/social").onSnapshot(s => { SOCIAL = s.exists ? s.data() : null; h.schedule(); }, () => {}); }
+  if (!socialSub && h.db()){ socialSub = true;
+    h.db().doc("config/social").onSnapshot(s => { SOCIAL = s.exists ? s.data() : null; h.schedule(); }, () => {});
+    h.db().doc("config/social_auto").onSnapshot(s => { SAUTO = s.exists ? s.data() : null; h.schedule(); }, () => {});
+    if (window.claude && window.claude.use) window.claude.use("social").then(x => { if (x){ SOCAPI = x; h.schedule(); } }).catch(() => {});
+  }
   const R = range(period), cur = metrics(R.from, R.to), prev = metrics(R.pfrom, R.pto), occ = occupancy(), ch = clientHealth();
   const ms = monthly(), mx = mix(cur.rows).slice(0, 8);
   const wd = [0,0,0,0,0,0,0]; for (const r of cur.rows) wd[new Date(r.d + "T12:00:00").getDay()]++;
@@ -240,6 +311,8 @@ function wire(root){
 function click(e){
   const p = e.target.closest("[data-dp]"); if (p){ period = p.dataset.dp; try { localStorage.setItem("cw.dash.p", period); } catch(x){} D().schedule(); return true; }
   const s = e.target.closest("[data-soc]"); if (s){ editSocial(s.dataset.soc); return true; }
+  if (e.target.closest("[data-socsync]")){ socSync(); return true; }
+  if (e.target.closest("[data-soctt]")){ ligarTikTok(); return true; }
   const c = e.target.closest("[data-dcli]"); if (c){ const k = D().clientByName(c.dataset.dcli); if (k) D().openCliente(k._id); return true; }
   return false;
 }

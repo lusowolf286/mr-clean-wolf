@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Ligar TikTok — Mr Clean Wolf</title>
+<meta name="theme-color" content="#1E2124">
+<meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
+<link rel="icon" type="image/png" href="../icons/gestao-192.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Manrope:wght@400;600;700&display=swap">
+<script src="../config.js"></script>
+<style>
+body{margin:0;background:#1E2124;color:#F3ECE3;font:16px/1.55 Manrope,system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
+main{max-width:480px;margin:0 auto;padding:calc(40px + env(safe-area-inset-top,0px)) 18px 40px}
+h1{font:800 26px/1.2 Syne,sans-serif;margin:0 0 8px}
+.stripe{display:flex;flex-direction:column;gap:3px;margin:14px 0 22px}.stripe i{height:4px;background:#6B0F1F}.stripe b{height:1px;background:#E9AC3C}
+p{color:#DCD3C9;margin:0 0 12px}
+.ok{color:#7CCB9F}.err{color:#F28B7D}
+.card{background:#282B2F;border:1px solid #3C4046;border-radius:14px;padding:16px 18px}
+</style>
+</head>
+<body>
+<main>
+<h1>Ligar TikTok</h1>
+<div class="stripe" aria-hidden="true"><i></i><b></b></div>
+<div class="card"><p id="msg">A concluir a ligação…</p></div>
+</main>
+<script>
+(async () => {
+  const msg = document.getElementById("msg");
+  const say = (t, c) => { msg.textContent = t; msg.className = c || ""; };
+  const q = new URLSearchParams(location.search);
+  history.replaceState(null, "", location.pathname);          // o código não fica no histórico
+  if (q.get("error")) return say("A autorização foi cancelada no TikTok. Pode fechar esta página e tentar de novo a partir da app.", "err");
+  const code = q.get("code"), state = q.get("state");
+  if (!code || !state) return say("Esta página só é usada durante a ligação ao TikTok. Inicie-a na app de gestão: Dashboard → Redes sociais → Ligar TikTok.");
+  const C = window.CW_CONFIG || {};
+  try {
+    const r = await fetch(C.supabaseUrl + "/functions/v1/social-sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: C.supabaseAnonKey },
+      body: JSON.stringify({ acao: "tiktok_callback", code, state })
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.erro || "Não foi possível concluir a ligação.");
+    say("TikTok ligado. Os números passam a ser recolhidos todos os dias. Pode fechar esta página e voltar à app.", "ok");
+  } catch (e) { say(e.message, "err"); }
+})();
+</script>
+</body>
+</html>

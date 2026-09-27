@@ -248,6 +248,17 @@ const atualizacoes = {
   async list(){ const { data, error } = await sb.from("atualizacoes").select("*").eq("estado","respondido").order("respondido_at"); if (error) throw error; return data || []; },
   async update(id, estado){ const { error } = await sb.from("atualizacoes").update({ estado }).eq("id", id); if (error) throw error; }
 };
+/* ---------- redes sociais (função social-sync no servidor) ---------- */
+const social = {
+  async call(acao, extra){
+    const { data, error } = await sb.functions.invoke("social-sync", { body: Object.assign({ acao }, extra || {}) });
+    if (error){ let m = error.message; try { const j = await error.context.json(); if (j && j.erro) m = j.erro; } catch(e){} throw new Error(m); }
+    if (data && data.erro) throw new Error(data.erro);
+    return data;
+  },
+  sync(){ return social.call("sync", { forcar:true }); },
+  tiktokUrl(){ return social.call("tiktok_url"); }
+};
 const agenda = {
   async get(){ const { data, error } = await sb.from("agenda").select("dados").eq("id","config").maybeSingle(); if (error) throw error; return data ? data.dados : null; },
   async set(dados){ const { error } = await sb.from("agenda").upsert({ id:"config", dados, updated_at: new Date().toISOString() }); if (error) throw error; }
@@ -264,6 +275,7 @@ window.claude = {
     if (name === "pedidos") return s === "offline" ? null : pedidos;
     if (name === "agenda") return s === "offline" ? null : agenda;
     if (name === "atualizacoes") return s === "offline" ? null : atualizacoes;
+    if (name === "social") return s === "offline" ? null : social;
     return null;
   }
 };
