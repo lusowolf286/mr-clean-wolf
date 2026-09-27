@@ -13,7 +13,7 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt
 function overlay(html){
   let el = document.getElementById("cw-login");
   if (!el){ el = document.createElement("div"); el.id = "cw-login"; document.body.appendChild(el); }
-  el.setAttribute("style","position:fixed;inset:0;z-index:50;background:#121212;display:flex;align-items:center;justify-content:center;padding:24px;font-family:Manrope,system-ui,sans-serif;color:#F3ECE3");
+  el.setAttribute("style","position:fixed;inset:0;z-index:50;background:#1E2124;display:flex;align-items:center;justify-content:center;padding:24px;font-family:Manrope,system-ui,sans-serif;color:#F3ECE3");
   el.innerHTML = `<div style="width:100%;max-width:380px;display:grid;gap:16px">
     <div style="display:flex;align-items:center;gap:10px"><img src="../icons/wolf.png" alt="" style="width:64px;height:55px;object-fit:contain">
     <div style="line-height:1"><div style="font:600 11px Syne,sans-serif;letter-spacing:.3em;color:#E9AC3C">MR</div><div style="font:800 24px Syne,sans-serif">CLEAN WOLF</div></div></div>
@@ -21,7 +21,7 @@ function overlay(html){
     ${html}</div>`;
   return el;
 }
-const inputCss = "width:100%;box-sizing:border-box;min-height:48px;border:1px solid #3A3632;background:#262422;color:#F3ECE3;border-radius:12px;padding:0 14px;font:16px Manrope,sans-serif";
+const inputCss = "width:100%;box-sizing:border-box;min-height:48px;border:1px solid #44484E;background:#303338;color:#F3ECE3;border-radius:12px;padding:0 14px;font:16px Manrope,sans-serif";
 const btnCss = "min-height:48px;border-radius:12px;border:1px solid #9B1B30;background:#6B0F1F;color:#fff;font:700 16px Manrope,sans-serif;cursor:pointer";
 function loginUI(){
   return new Promise(resolve => {
@@ -45,7 +45,7 @@ function loginUI(){
         <p style="margin:0;font-size:14px;color:#A99F94">Enviámos um código para ${esc(email)}.</p>
         <input id="cw-code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" style="${inputCss};letter-spacing:.3em;font-size:22px;text-align:center">
         <button id="cw-ok" style="${btnCss}">Entrar</button>
-        <button id="cw-back" style="${btnCss};background:#262422;border-color:#3A3632">Usar outro e-mail</button>
+        <button id="cw-back" style="${btnCss};background:#303338;border-color:#44484E">Usar outro e-mail</button>
         ${msg?`<p style="margin:0;font-size:13px;color:#F28B7D">${esc(msg)}</p>`:""}`);
       const go = async () => {
         const token = el.querySelector("#cw-code").value.trim(); if (!token) return;
