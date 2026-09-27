@@ -242,8 +242,9 @@ function booking(){
   const days = livres(), pend = PED.filter(p => p.estado === "pendente").length;
   const f = { d:"", periodo:"indif", sv:[], car: cars.length ? 0 : -1 };
   const groups = [...new Set((AG.servicos||[]).map(x => x.g))];
-  const months = () => { if (!days.length) return `<p class="empty">De momento não há dias disponíveis. Tente mais tarde.</p>`;
-    const set = new Set(days), first = days[0], last = days[days.length-1]; let h = "", y = +first.slice(0,4), m = +first.slice(5,7)-1;
+  const months = () => {
+    const t0 = dstr(new Date()), set = new Set(days), first = addDays(t0, 1), last = addDays(t0, Math.max(28, +AG.horizonte || 60));
+    let h = days.length ? "" : `<p class="empty">De momento não há dias disponíveis para marcação. Tente novamente mais tarde.</p>`, y = +first.slice(0,4), m = +first.slice(5,7)-1;
     while (dstr(new Date(y,m,1)) <= last){ const n = new Date(y,m+1,0).getDate(), padn = (new Date(y,m,1).getDay()+6)%7;
       h += `<div class="mh">${MES[m]} ${y}</div><div class="cal">${[1,2,3,4,5,6,0].map(i=>`<span class="dw">${DOW[i]}</span>`).join("")}${"<span></span>".repeat(padn)}`;
       for (let i = 1; i <= n; i++){ const d = `${y}-${pad2(m+1)}-${pad2(i)}`; h += `<button type="button" data-d="${d}" ${set.has(d)?"":"disabled"} aria-pressed="${f.d===d}">${i}</button>`; }

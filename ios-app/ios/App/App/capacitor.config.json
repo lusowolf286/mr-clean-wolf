@@ -6,7 +6,7 @@
 	"ios": {
 		"contentInset": "never",
 		"backgroundColor": "#121212",
-		"scrollEnabled": true
+		"scrollEnabled": false
 	},
 	"packageClassList": []
 }

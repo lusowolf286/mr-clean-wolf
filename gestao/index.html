@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" href="../icons/icon-192.png">
-<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}</style>
+<style>body{margin:0}img{max-width:100%}</style>
 <script src="../config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
 <script src="../shared/supa.js"></script>
@@ -34,7 +34,7 @@
 }
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
-html,body{height:100%}
+html,body{height:100%;overflow:hidden;overscroll-behavior:none}
 body{background:var(--bg);color:var(--ink);font:15px/1.45 var(--body);-webkit-font-smoothing:antialiased;overscroll-behavior-y:none}
 button,input,select,textarea{font:inherit;color:inherit}
 input,select,textarea{font-size:16px}
@@ -44,10 +44,11 @@ button,input,select,label,a,textarea{-webkit-tap-highlight-color:transparent;tou
 [hidden]{display:none!important}
 
 /* layout */
-.app{min-height:100%}
+.app{position:fixed;inset:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain}
+.app.lock{overflow:hidden}
 .side{display:none}
 .main{max-width:760px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-bottom:calc(120px + env(safe-area-inset-bottom,0px))}
-.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg)}
+.top{position:sticky;top:0;z-index:5;background:var(--bg);padding-top:env(safe-area-inset-top,0px)}
 .top-in{max-width:760px;margin:0 auto;padding:10px max(16px,env(safe-area-inset-right,0px)) 8px max(16px,env(safe-area-inset-left,0px));display:flex;align-items:center;gap:10px}
 .stripe{display:flex;flex-direction:column;gap:3px}
 .stripe i{display:block;height:4px;background:var(--ruby)}
@@ -169,7 +170,13 @@ h1.pg{font-family:var(--display);font-weight:700;font-size:28px;margin:0;line-he
 .sh-f{padding:12px 18px calc(12px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--line);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .sh-f .sp{flex:1}
 body.lock{overflow:hidden;position:fixed;width:100%}
-.fld{display:grid;gap:5px;min-width:0}
+.fld{display:grid;gap:5px;min-width:0;position:relative}
+datalist{display:none}
+.sug{position:absolute;left:0;right:0;top:100%;margin-top:4px;z-index:40;background:var(--surface2);border:1px solid var(--ruby2);border-radius:12px;max-height:240px;overflow-y:auto;box-shadow:0 12px 28px rgba(0,0,0,.55);-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+.sug button{display:block;width:100%;text-align:left;border:0;background:none;color:var(--ink);padding:12px 14px;min-height:46px;font-size:15px;cursor:pointer;border-bottom:1px solid var(--line)}
+.sug button:last-child{border-bottom:0}
+.sug button:active,.sug button.on{background:var(--rubytint)}
+.sug button b{color:var(--copper);font-weight:700}
 .fld input,.fld select,.fld textarea{width:100%;min-height:46px;border:1px solid #3A3632;background:var(--surface2);border-radius:12px;padding:10px 12px;min-width:0}
 .fld textarea{min-height:90px;resize:vertical}
 .fld select{-webkit-appearance:none;appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 17px) 52%,calc(100% - 12px) 52%;background-size:5px 5px;background-repeat:no-repeat;padding-right:32px}
@@ -562,7 +569,7 @@ function renderNav(){
   $("#yr").innerHTML = yearOptions();
 }
 function yearSel(){ return `<select class="yr yr-in" data-yr aria-label="Ano">${yearOptions()}</select>`; }
-function goto(tab){ ui.tab=tab; ui.q=""; try{localStorage.setItem("cw2.tab",tab);}catch(e){} render(); window.scrollTo(0,0); }
+function goto(tab){ ui.tab=tab; ui.q=""; try{localStorage.setItem("cw2.tab",tab);}catch(e){} render(); $(".app").scrollTo(0,0); }
 
 /* ============ render ============ */
 function render(){
@@ -922,12 +929,38 @@ function orcamentoPDF(f, c){
 }
 
 /* ============ folhas ============ */
+
+/* ============ sugestões nos campos (substitui o datalist, que o iPhone não mostra) ============ */
+const fold = t => String(t||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+let sugBox=null, sugIn=null, sugIdx=-1;
+function sugClose(){ if (sugBox){ sugBox.remove(); sugBox=null; } sugIn=null; sugIdx=-1; }
+function sugPick(v){ const i=sugIn; if (!i) return; i.value=v; sugClose(); i.dispatchEvent(new Event("input",{bubbles:true})); i.dispatchEvent(new Event("change",{bubbles:true})); }
+function sugShow(i){
+  const dl=document.getElementById(i.dataset.sug); if (!dl) return;
+  const q=fold(i.value.trim()), all=[...dl.options].map(o=>o.value);
+  const hits = q ? all.filter(v=>fold(v).includes(q)).sort((a,b)=>(fold(b).startsWith(q)-fold(a).startsWith(q))||a.localeCompare(b,"pt")) : all;
+  const list=hits.filter(v=>fold(v)!==q).slice(0,30);
+  if (!list.length){ sugClose(); return; }
+  if (!sugBox || sugIn!==i){ sugClose(); sugBox=document.createElement("div"); sugBox.className="sug"; sugBox.setAttribute("role","listbox"); i.parentNode.appendChild(sugBox); sugIn=i;
+    sugBox.addEventListener("pointerdown",e=>e.preventDefault());
+    sugBox.addEventListener("click",e=>{ const b=e.target.closest("button"); if (b) sugPick(b.dataset.v); }); }
+  sugIdx=-1;
+  const hl=v=>{ if (!q) return esc(v); const k=fold(v).indexOf(q); return k<0?esc(v):esc(v.slice(0,k))+"<b>"+esc(v.slice(k,k+q.length))+"</b>"+esc(v.slice(k+q.length)); };
+  sugBox.innerHTML=list.map(v=>`<button type="button" role="option" data-v="${esc(v)}">${hl(v)}</button>`).join("");
+}
+document.addEventListener("input",e=>{ const i=e.target; if (i.dataset && i.dataset.sug) sugShow(i); },true);
+document.addEventListener("focusin",e=>{ const i=e.target; if (i.dataset && i.dataset.sug) sugShow(i); else if (sugBox && !sugBox.contains(i)) sugClose(); });
+document.addEventListener("focusout",e=>{ if (e.target===sugIn) setTimeout(()=>{ if (document.activeElement!==sugIn) sugClose(); },150); });
+document.addEventListener("keydown",e=>{ if (!sugBox||e.target!==sugIn) return; const bs=[...sugBox.querySelectorAll("button")];
+  if (e.key==="ArrowDown"||e.key==="ArrowUp"){ e.preventDefault(); sugIdx=(sugIdx+(e.key==="ArrowDown"?1:-1)+bs.length)%bs.length; bs.forEach((b,k)=>b.classList.toggle("on",k===sugIdx)); bs[sugIdx].scrollIntoView({block:"nearest"}); }
+  else if (e.key==="Enter" && sugIdx>=0){ e.preventDefault(); sugPick(bs[sugIdx].dataset.v); }
+  else if (e.key==="Escape") sugClose(); });
 let sheetClose=null;
 function openSheet(title, body, foot, onMount, wide){
-  const host=$("#sheet-host"), y=window.scrollY;
+  const host=$("#sheet-host"), app=$(".app");
   host.innerHTML=`<div class="scrim" id="scrim"><div class="sheet ${wide?"wide":""}" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="sh-h"><h2>${esc(title)}</h2><button class="x" id="sh-x" aria-label="Fechar">×</button></div><form class="sh-b" id="sh-form" novalidate>${body}</form><div class="sh-f">${foot}</div></div></div>`;
-  document.body.style.top=(-y)+"px"; document.body.classList.add("lock");
-  const close=()=>{ host.innerHTML=""; sheetClose=null; document.body.classList.remove("lock"); document.body.style.top=""; window.scrollTo(0,y); };
+  app.classList.add("lock");
+  const close=()=>{ sugClose(); host.innerHTML=""; sheetClose=null; app.classList.remove("lock"); };
   sheetClose=close; $("#sh-x").onclick=close; $("#scrim").addEventListener("click",e=>{ if (e.target.id==="scrim") close(); });
   $("#sh-form").addEventListener("submit",e=>e.preventDefault());
   onMount&&onMount(close);
@@ -959,9 +992,9 @@ function editServico(id, preset){
   const body=`
     <div class="fld"><span class="lbl">Estado</span><div class="st" id="f-st">${ESTADOS.map(e=>`<button type="button" data-st="${e[0]}" aria-pressed="${f.estado===e[0]}">${e[1]}</button>`).join("")}</div></div>
     <div class="three"><label class="fld"><span class="lbl">Data</span><input type="date" id="f-d" value="${esc(f.d)}"></label><label class="fld"><span class="lbl">Hora</span><input type="time" id="f-h" value="${esc(f.hora)}"></label>
-      <label class="fld"><span class="lbl">Cliente</span><input id="f-cli" list="dl-cli" value="${esc(f.cli)}" placeholder="Nome" autocomplete="off"></label></div>
+      <label class="fld"><span class="lbl">Cliente</span><input id="f-cli" data-sug="dl-cli" value="${esc(f.cli)}" placeholder="Nome" autocomplete="off"></label></div>
     ${dlist("dl-cli",list("clientes").map(c=>c.nome))}
-    <div class="two"><label class="fld"><span class="lbl">Viatura</span><input id="f-via" list="dl-via" value="${esc(f.viatura)}" placeholder="Marca e modelo"></label><label class="fld"><span class="lbl">Matrícula</span><input id="f-mat" value="${esc(f.matricula)}" placeholder="AA-00-AA" autocapitalize="characters"></label></div>
+    <div class="two"><label class="fld"><span class="lbl">Viatura</span><input id="f-via" data-sug="dl-via" value="${esc(f.viatura)}" placeholder="Marca e modelo"></label><label class="fld"><span class="lbl">Matrícula</span><input id="f-mat" value="${esc(f.matricula)}" placeholder="AA-00-AA" autocapitalize="characters"></label></div>
     ${dlist("dl-via",list("servicos").map(r=>r.viatura))}
     <div class="fld"><span class="lbl">Categoria do veículo</span><div class="cats" id="f-cat">${CATS.map(c=>`<button type="button" data-cat="${c}" aria-pressed="${f.cat===c}">${c}</button>`).join("")}</div></div>
     <div id="f-svs" style="display:grid;gap:12px">${svHtml()}</div>
@@ -1110,7 +1143,7 @@ function editCompra(id){
   const ex=id?S.compras[id]:null; let fotos=[...((ex&&ex.fotos)||[])];
   const phHtml=()=>fotos.map((p,i)=>`<figure>${photoImg(p,"Documento "+(i+1))}<button type="button" class="del" data-pdel="${i}" aria-label="Remover">×</button></figure>`).join("")+(assets?`<label>+ Fatura<input type="file" id="c-photo" accept="image/*" hidden></label>`:"");
   const body=`<div class="two"><label class="fld"><span class="lbl">Data</span><input type="date" id="c-d" value="${esc(ex?ex.d:today())}"></label><label class="fld"><span class="lbl">Montante €</span><input id="c-val" inputmode="decimal" value="${ex?fmtIn(ex.val):""}" placeholder="0,00"></label></div>
-    <label class="fld"><span class="lbl">Loja / fornecedor</span><input id="c-loja" list="dl-loja" value="${esc(ex?ex.loja:"")}" autocomplete="off"></label>${dlist("dl-loja",list("compras").map(c=>c.loja))}
+    <label class="fld"><span class="lbl">Loja / fornecedor</span><input id="c-loja" data-sug="dl-loja" value="${esc(ex?ex.loja:"")}" autocomplete="off"></label>${dlist("dl-loja",list("compras").map(c=>c.loja))}
     <div class="fld"><span class="lbl">Tipo</span><div class="st" id="c-tipo">${TIPOS_COMPRA.map(t=>`<button type="button" data-t="${t[0]}" aria-pressed="${(ex&&ex.tipo||"consumivel")===t[0]}" style="font-size:13px">${t[1]}</button>`).join("")}</div></div>
     <label class="fld"><span class="lbl">Nota</span><input id="c-nota" value="${esc(ex&&ex.nota||"")}" placeholder="Produtos, n.º da fatura…"></label>
     <div class="fld"><span class="lbl">Fotografia da fatura</span><div class="photos" id="c-ph">${phHtml()}</div></div>
@@ -1137,7 +1170,7 @@ function editMov(id){
   const ex=id?S.movimentos[id]:null, neg=ex?ex.val<0:false;
   const body=`<div class="fld"><span class="lbl">Tipo</span><div class="st" id="m-sig" style="grid-template-columns:1fr 1fr"><button type="button" data-s="1" aria-pressed="${!neg}">Entrada</button><button type="button" data-s="-1" aria-pressed="${neg}">Saída</button></div></div>
     <div class="two"><label class="fld"><span class="lbl">Data</span><input type="date" id="m-d" value="${esc(ex?ex.d:today())}"></label><label class="fld"><span class="lbl">Montante €</span><input id="m-val" inputmode="decimal" value="${ex?fmtIn(Math.abs(ex.val)):""}"></label></div>
-    <label class="fld"><span class="lbl">Descrição</span><input id="m-desc" list="dl-mov" value="${esc(ex?ex.desc:"")}" autocomplete="off"></label>${dlist("dl-mov",[...MOV_DESC,...list("movimentos").map(m=>m.desc)])}
+    <label class="fld"><span class="lbl">Descrição</span><input id="m-desc" data-sug="dl-mov" value="${esc(ex?ex.desc:"")}" autocomplete="off"></label>${dlist("dl-mov",[...MOV_DESC,...list("movimentos").map(m=>m.desc)])}
     <label class="fld"><span class="lbl">Conta</span><select id="m-conta">${["Principal","Avença"].map(c=>`<option ${((ex&&ex.conta)||ui.conta)===c?"selected":""}>${c}</option>`).join("")}</select></label>`;
   openSheet(ex?"Movimento":"Novo movimento", body, `${delBtn(!!ex)}<span class="sp"></span><button class="btn" type="button" id="sh-cancel">Cancelar</button><button class="btn pri" type="button" id="sh-save">Guardar</button>`, close=>{
     let sig=neg?-1:1; $("#m-sig").onclick=e=>{ const b=e.target.closest("[data-s]"); if(!b) return; sig=+b.dataset.s; $("#m-sig").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b)); };
@@ -1166,7 +1199,7 @@ async function plusStock(pid){ const e=stockEstimate(pid); try { await patchCust
 function newProduto(){
   const gens=[...new Set(Object.values(CU().produtos||{}).map(p=>p.generico).filter(Boolean))];
   const body=`<label class="fld"><span class="lbl">Produto (marca e embalagem)</span><input id="n-nome" placeholder="Ex.: Gyeon Bathe 1 L"></label>
-    <div class="two"><label class="fld"><span class="lbl">Tipo genérico</span><input id="n-gen" list="dl-gen" placeholder="Ex.: Shampoo"></label><label class="fld"><span class="lbl">Grupo</span><select id="n-grp">${GRUPOS.map(g=>`<option>${g}</option>`).join("")}</select></label></div>${dlist("dl-gen",gens)}
+    <div class="two"><label class="fld"><span class="lbl">Tipo genérico</span><input id="n-gen" data-sug="dl-gen" placeholder="Ex.: Shampoo"></label><label class="fld"><span class="lbl">Grupo</span><select id="n-grp">${GRUPOS.map(g=>`<option>${g}</option>`).join("")}</select></label></div>${dlist("dl-gen",gens)}
     <div class="two"><label class="fld"><span class="lbl">Preço €</span><input id="n-preco" inputmode="decimal"></label><label class="fld"><span class="lbl">Dá para quantos carros</span><input id="n-usos" inputmode="decimal"></label></div>
     <label class="fld"><span class="lbl">Unidades em stock</span><input id="n-un" inputmode="decimal" placeholder="Opcional"></label>
     <p class="note">Para usar o produto num serviço, associe o tipo genérico no separador Custos.</p>`;
