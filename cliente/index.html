@@ -95,6 +95,16 @@ select,textarea{font-size:16px}
 .p-pe{background:#2B2413;color:var(--gold)}.p-ok{background:#123024;color:var(--pos)}.p-no{background:#34080F;color:#F2A99E}
 .lnk{background:none;border:0;color:var(--copper);text-decoration:underline;padding:8px 0;cursor:pointer;font-size:14px;justify-self:start}
 .form{display:grid;gap:16px;margin-top:8px}
+/* Regras de qualidade (docs/REGRAS-DE-QUALIDADE.md) */
+/* R4.1/R3.1: pedido de marcação em passos numerados, com mais espaço entre passos do que dentro de cada passo */
+.step{display:grid;gap:8px}
+.step+.step{border-top:1px solid var(--line);padding-top:18px}
+.step-h{display:flex;align-items:center;gap:8px;font:700 15px Syne,sans-serif;margin:0}
+.step-h i{font:700 11.5px Manrope,sans-serif;font-style:normal;width:22px;height:22px;border-radius:7px;display:inline-grid;place-items:center;background:#34080F;color:var(--copper);border:1px solid var(--ruby)}
+.step-h small{font:500 13px Manrope,sans-serif;color:var(--muted)}
+/* E3.2: estados sem ligação e de erro com «Tentar de novo» */
+.banner .btn{margin-top:10px;min-height:42px;width:auto;padding:0 16px}
+.state{display:grid;gap:14px;margin-top:8vh;text-align:left}
 </style>
 </head>
 <body>
@@ -171,6 +181,7 @@ async function load(){
 }
 
 function render(rows, offline){
+  if (!rows.length && offline){ offlineState(); return; }
   if (!rows.length){
     app.innerHTML = `<h1>Sem histórico</h1><p class="sub">Este e-mail não está associado a nenhuma ficha de cliente.</p>${footer()}`;
     wireFooter(); return;
@@ -191,7 +202,7 @@ function render(rows, offline){
       ${(s.fotos||[]).length?`<div class="ph">${s.fotos.map(p=>`<button type="button" data-view="${esc(p)}" aria-label="Ver fotografia"><img data-path="${esc(p)}" alt="Fotografia do serviço"></button>`).join("")}</div>`:""}
     </article>`;
   app.innerHTML = `<h1>Olá, ${esc(nome.split(" ")[0])}</h1><p class="sub" style="margin:0">Histórico de serviços${since?` desde ${since}`:""}.</p>
-    ${offline?`<div class="banner">Sem ligação à internet. A mostrar a última informação guardada.</div>`:""}
+    ${offline?`<div class="banner">Sem ligação à internet. A mostrar a última informação guardada.<br><button class="btn ghost" type="button" data-retry>Tentar de novo</button></div>`:""}
     <div class="kpis"><div class="kpi hero"><div class="l">Serviços</div><div class="v">${done.length}</div></div><div class="kpi"><div class="l">Último</div><div class="v" style="font-size:17px">${done[0]?esc(fmtD(done[0].d)):"—"}</div></div></div>
     ${AG && !offline ? `<button class="btn cta" type="button" id="book">Pedir marcação</button>` : ""}
     ${pedidosHtml()}
@@ -208,6 +219,11 @@ function render(rows, offline){
   });
 }
 function alertMsg(m){ const el = document.createElement("div"); el.className = "banner"; el.textContent = m; app.prepend(el); setTimeout(() => el.remove(), 5000); window.scrollTo(0,0); }
+/* E3.1/E3.2: sem ligação e sem informação guardada — explica e oferece «Tentar de novo» */
+function offlineState(){
+  app.innerHTML = `<div class="state"><h1>Sem ligação</h1><p class="sub" style="margin:0">Não foi possível ligar ao Mr Clean Wolf. Verifique a internet ou os dados móveis.</p><button class="btn" type="button" data-retry>Tentar de novo</button></div>`;
+}
+document.addEventListener("click", e => { const b = e.target.closest("[data-retry]"); if (!b) return; b.disabled = true; b.textContent = "A ligar…"; start(); });
 
 /* ---------- pedidos de marcação ---------- */
 const PER = { manha:"Manhã", tarde:"Tarde", indif:"Indiferente" };
@@ -256,14 +272,15 @@ function booking(){
     <p class="sub" style="margin:0">Escolha o dia e os serviços. O pedido fica a aguardar confirmação e a resposta aparece aqui na área de cliente.</p>
     ${pend >= 3 ? `<div class="banner">Já tem 3 pedidos a aguardar confirmação. Aguarde a resposta antes de fazer outro.</div>` : ""}
     <div class="form">
-      <label class="fld"><span>Viatura</span><select id="bk-car">${cars.map((v,i)=>`<option value="${i}">${esc([v.viatura,v.matricula].filter(Boolean).join(" · ")||"Viatura")}</option>`).join("")}<option value="-1" ${cars.length?"":"selected"}>Outra viatura</option></select></label>
-      <div id="bk-new" class="form" style="margin:0" ${cars.length?"hidden":""}><label class="fld"><span>Marca e modelo</span><input id="bk-via" autocomplete="off" autocapitalize="words"></label><label class="fld"><span>Matrícula</span><input id="bk-mat" autocomplete="off" autocapitalize="characters" style="text-transform:uppercase"></label></div>
-      <div><div class="fld"><span>Serviços pretendidos</span></div>${(AG.servicos||[]).some(x=>x.req)?`<p class="msg" style="margin:4px 0 0">${esc((AG.servicos||[]).filter(x=>x.req).map(x=>x.l).join(", "))} só estão disponíveis com ${esc(((AG.servicos||[]).find(x=>x.k===(AG.servicos.find(y=>y.req)||{}).req)||{}).l||"descontaminação").toLowerCase()}.</p>`:""}${groups.map(g => `<div class="gl">${esc(g)}</div><div class="svs">${(AG.servicos||[]).filter(x=>x.g===g).map(x=>`<button type="button" data-sv="${esc(x.k)}" aria-pressed="false">${esc(x.l)}</button>`).join("")}</div>`).join("")}</div>
-      <div><div class="fld"><span>Dia</span></div><div id="bk-cal">${months()}</div></div>
-      <div><div class="fld"><span>Período</span></div><div class="seg" id="bk-per">${Object.entries(PER).map(([k,l])=>`<button type="button" data-per="${k}" aria-pressed="${f.periodo===k}">${l}</button>`).join("")}</div></div>
-      <label class="fld"><span>Observações (opcional)</span><textarea id="bk-notas" placeholder="Ex.: pelo de animais, manchas nos bancos, horário de entrega…"></textarea></label>
-      <button class="btn" type="button" id="bk-send" ${pend>=3||!days.length?"disabled":""}>Enviar pedido</button>
-      <p class="msg" id="bk-msg"></p>
+      <section class="step"><h2 class="step-h"><i>1</i>Viatura</h2>
+      <label class="fld"><span>Escolha a viatura</span><select id="bk-car">${cars.map((v,i)=>`<option value="${i}">${esc([v.viatura,v.matricula].filter(Boolean).join(" · ")||"Viatura")}</option>`).join("")}<option value="-1" ${cars.length?"":"selected"}>Outra viatura</option></select></label>
+      <div id="bk-new" class="form" style="margin:0" ${cars.length?"hidden":""}><label class="fld"><span>Marca e modelo</span><input id="bk-via" autocomplete="off" autocapitalize="words"></label><label class="fld"><span>Matrícula</span><input id="bk-mat" autocomplete="off" autocapitalize="characters" style="text-transform:uppercase"></label></div></section>
+      <section class="step"><h2 class="step-h"><i>2</i>Serviços</h2>${(AG.servicos||[]).some(x=>x.req)?`<p class="msg" style="margin:0">${esc((AG.servicos||[]).filter(x=>x.req).map(x=>x.l).join(", "))} só estão disponíveis com ${esc(((AG.servicos||[]).find(x=>x.k===(AG.servicos.find(y=>y.req)||{}).req)||{}).l||"descontaminação").toLowerCase()}.</p>`:""}${groups.map(g => `<div class="gl">${esc(g)}</div><div class="svs">${(AG.servicos||[]).filter(x=>x.g===g).map(x=>`<button type="button" data-sv="${esc(x.k)}" aria-pressed="false">${esc(x.l)}</button>`).join("")}</div>`).join("")}</section>
+      <section class="step"><h2 class="step-h"><i>3</i>Dia e período</h2><div id="bk-cal">${months()}</div>
+      <div class="fld"><span>Período</span></div><div class="seg" id="bk-per">${Object.entries(PER).map(([k,l])=>`<button type="button" data-per="${k}" aria-pressed="${f.periodo===k}">${l}</button>`).join("")}</div></section>
+      <section class="step"><h2 class="step-h"><i>4</i>Observações <small>(opcional)</small></h2><label class="fld"><span class="sr" style="position:absolute;left:-9999px">Observações</span><textarea id="bk-notas" placeholder="Ex.: pelo de animais, manchas nos bancos, horário de entrega…"></textarea></label></section>
+      <section class="step"><button class="btn" type="button" id="bk-send" ${pend>=3||!days.length?"disabled":""}>Enviar pedido</button>
+      <p class="msg" id="bk-msg"></p></section>
     </div>${footer()}`;
   wireFooter(); window.scrollTo(0,0);
   $("#bk-back").onclick = () => render(ROWS, false);
@@ -313,13 +330,14 @@ const closeV = () => { $("#viewer").hidden = true; $("#v-img").removeAttribute("
 $("#v-close").onclick = closeV; $("#viewer").addEventListener("click", e => { if (e.target.id === "viewer") closeV(); });
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeV(); });
 
-(async () => {
+async function start(){
   if (!sb){ app.innerHTML = `<p class="sub">A área de cliente ainda não está configurada.</p>`; return; }
-  const { data:{ session } } = await sb.auth.getSession();
+  let session = null; try { ({ data:{ session } } = await sb.auth.getSession()); } catch(e){}
   if (session) load();
-  else if (!navigator.onLine){ let rows=null; try { const c = JSON.parse(localStorage.getItem(CACHE)||"null"); rows = Array.isArray(c) ? c : c && c.rows; if (c && !Array.isArray(c)){ AG = c.ag; PED = c.ped || []; } } catch(e){} if (rows) render(rows, true); else app.innerHTML = `<p class="sub">Sem ligação à internet.</p>`; }
+  else if (!navigator.onLine){ let rows=null; try { const c = JSON.parse(localStorage.getItem(CACHE)||"null"); rows = Array.isArray(c) ? c : c && c.rows; if (c && !Array.isArray(c)){ AG = c.ag; PED = c.ped || []; } } catch(e){} if (rows) render(rows, true); else offlineState(); }
   else login();
-})();
+}
+start();
 if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
 })();
 </script>

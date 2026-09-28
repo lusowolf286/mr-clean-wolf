@@ -67,7 +67,7 @@ const invalid = msg => { app.innerHTML = `<h1>Link inválido</h1><p class="sub">
 async function start(){
   if (!sb || !token){ invalid("Este link está incompleto."); return; }
   const { data, error } = await sb.rpc("atualizacao_info", { p_token: token });
-  if (error){ invalid("Não foi possível verificar o link. Tente de novo dentro de alguns minutos."); return; }
+  if (error){ invalid("Não foi possível verificar o link. Verifique a internet e tente de novo."); app.insertAdjacentHTML("beforeend", `<button class="btn" type="button" id="retry" style="margin-top:18px">Tentar de novo</button>`); $("#retry").onclick = () => { app.innerHTML = `<p class="sub">A carregar…</p>`; start(); }; return; }   // E3.2
   if (!data || !data.valido){ invalid(data && data.estado && data.estado !== "enviado" ? "Os seus dados já foram enviados através deste link. Obrigado!" : "Este link já não é válido ou expirou."); return; }
   const nome = data.nome ? `, ${esc(data.nome)}` : "";
   app.innerHTML = `<h1>Olá${nome}!</h1><p class="sub">Para mantermos a sua ficha de cliente atualizada, confirme ou indique os seus dados e as suas viaturas. Preencha apenas o que quiser atualizar.</p>
