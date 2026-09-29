@@ -7,6 +7,7 @@ Todas as alterações seguem **[docs/REGRAS-DE-QUALIDADE.md](docs/REGRAS-DE-QUAL
 - Textos da interface em português europeu, formal.
 
 ## 2. Estrutura e cuidados
+- Alojamento oficial: GitHub Pages (branch `main`), com os links curtos `app.mrcleanwolf.com` na Cloudflare. O projeto «mr-clean-wolf» no Vercel não é usado.
 - `gestao/` app de gestão (PWA); `cliente/` área de cliente; `d/` atualização de dados por link; `shared/ios.js` teclado e iOS (incluir em todas as páginas com campos — E1).
 - A app iOS (`ios-app/`) embute uma cópia de `gestao/`. Depois de alterar `gestao/`, `shared/` ou `config.js`, atualizar a cópia (`cd ios-app && npm run sync`) e aumentar `CURRENT_PROJECT_VERSION`.
 - Ao alterar ficheiros servidos, aumentar a versão da cache em `gestao/sw.js` / `cliente/sw.js`.
@@ -26,6 +27,7 @@ Todas as alterações seguem **[docs/REGRAS-DE-QUALIDADE.md](docs/REGRAS-DE-QUAL
 - E5.2/E5.6: manifesto de privacidade `PrivacyInfo.xcprivacy` na app iOS; compilação 2.
 - Ícones dentro de botões com tamanho definido (antes podiam aparecer desproporcionados).
 
-## 4. Última auditoria (E4/E5) — 28/09/2026
+## 4. Última auditoria (E4/E5) — 29/09/2026
+- Supabase (conector): RLS ativo em todas as tabelas; nada legível sem sessão; um cliente só vê os seus dados (testado). Avisos de funções *SECURITY DEFINER* e de `social_privado` sem regras são intencionais. 5 regras de acesso otimizadas com `(select auth.jwt())` — `supabase/otimizacao_rls.sql`, aplicado a 29/09/2026.
 - E4: sem segredos no código. `config.js` tem apenas a chave *publishable* (acesso controlado por RLS); tokens de Meta, YouTube e TikTok e a chave *secret* estão nos segredos da *Edge Function* `social-sync`.
 - E5: permissões com justificação em português (câmara, fotografias, calendário, Face ID); política de privacidade acessível. Pendentes: a área de cliente cria contas — se um dia for publicada na App Store, tem de permitir apagar a conta dentro da app (E5.4); confirmar no Xcode que `PrivacyInfo.xcprivacy` aparece em *Build Phases → Copy Bundle Resources*.
