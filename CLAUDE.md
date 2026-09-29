@@ -12,6 +12,7 @@ Todas as alterações seguem **[docs/REGRAS-DE-QUALIDADE.md](docs/REGRAS-DE-QUAL
 - A app iOS (`ios-app/`) embute uma cópia de `gestao/`. Depois de alterar `gestao/`, `shared/` ou `config.js`, atualizar a cópia (`cd ios-app && npm run sync`) e aumentar `CURRENT_PROJECT_VERSION`.
 - Ao alterar ficheiros servidos, aumentar a versão da cache em `gestao/sw.js` / `cliente/sw.js`.
 - Só a chave pública (*publishable/anon*) do Supabase pode estar em `config.js`; segredos ficam nas *Edge Functions* (E4).
+- `site/` é o site público www.mrcleanwolf.com (substitui o Carrd). Publicado pela Cloudflare Pages (projeto `mrcleanwolf-site`, pasta de saída `site`, sem compilação): cada *push* para `main` atualiza o site. Uma só página, sem dependências além das fontes Google.
 
 ## 3. Registo de aplicação das regras
 **28/09/2026 — versão 1**
@@ -26,6 +27,13 @@ Todas as alterações seguem **[docs/REGRAS-DE-QUALIDADE.md](docs/REGRAS-DE-QUAL
 - E3.1–E3.4: «Tentar de novo» sem ligação (gestão, área de cliente, link de dados), aviso quando o carregamento demora mais de 15 s, e repetição de gravações falhadas com os mesmos dados.
 - E5.2/E5.6: manifesto de privacidade `PrivacyInfo.xcprivacy` na app iOS; compilação 2.
 - Ícones dentro de botões com tamanho definido (antes podiam aparecer desproporcionados).
+
+**29/09/2026 — site público (`site/`)**
+- R2.1/R5.1: uma só ação principal na entrada («Marcar pelo WhatsApp»); o resto em contorno.
+- R2.2/R4.2: produtos em 4 grupos; acessórios (21) divididos em 4 subgrupos com título.
+- R4.3: telefone mostrado como `+351 296 486 681`.
+- E1.3: calculadora de diluição com teclado decimal e Enter a fechar o teclado; E3.5 mensagem de erro em linguagem corrente.
+- E2.1/E2.2/E2.4: margens seguras, testado a 375 × 667 e 1280 × 800 sem deslocamento horizontal; toques ≥ 44 px.
 
 ## 4. Última auditoria (E4/E5) — 29/09/2026
 - Supabase (conector): RLS ativo em todas as tabelas; nada legível sem sessão; um cliente só vê os seus dados (testado). Avisos de funções *SECURITY DEFINER* e de `social_privado` sem regras são intencionais. 5 regras de acesso otimizadas com `(select auth.jwt())` — `supabase/otimizacao_rls.sql`, aplicado a 29/09/2026.
