@@ -129,6 +129,7 @@ h1.pg{font-family:var(--display);font-weight:700;font-size:28px;margin:0;line-he
 .lbl{font-size:11.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
 .muted{color:var(--muted)}.gold{color:var(--gold)}.copper{color:var(--copper)}.neg{color:var(--neg)}.pos{color:var(--pos)}
 .yr-in{display:none}
+.ord{white-space:nowrap;display:inline-flex;align-items:center;gap:8px;font-size:14px;color:var(--muted);font-weight:600;max-width:100%}.ord select{min-width:0;max-width:100%}
 @media (min-width:900px){.yr-in{display:block}}
 
 /* cards */
@@ -393,7 +394,7 @@ const svgI = k => `<svg viewBox="0 0 24 24" aria-hidden="true">${IC[k]||""}</svg
 const S = { servicos:{}, movimentos:{}, compras:{}, clientes:{}, cfg:null, custos:null };
 const loaded = new Set();
 let db=null, dl=null, assets=null, online=null, readOnly=false;
-const ui = { tab:"resumo", year:String(new Date().getFullYear()), q:"", conta:"Principal", ctipo:"todos", cliArq:false };
+const ui = { tab:"resumo", year:String(new Date().getFullYear()), q:"", conta:"Principal", ctipo:"todos", cliArq:false, cliOrd:(()=>{ try{ return localStorage.getItem("cw2.cliord")||"nome"; }catch(e){ return "nome"; } })() };
 try { const t=localStorage.getItem("cw2.tab"); if (t) ui.tab=t; const y=localStorage.getItem("cw2.year"); if (y) ui.year=y; } catch(e){}
 
 /* ============ util ============ */
@@ -875,13 +876,21 @@ function descricaoFatura(r){
 /* ---------- Clientes ---------- */
 function vClientes(){
   const fat={},n={},last={}; for (const r of list("servicos")){ fat[r.cli]=(fat[r.cli]||0)+(+r.fat||0); n[r.cli]=(n[r.cli]||0)+1; if (!last[r.cli]||r.d>last[r.cli]) last[r.cli]=r.d; }
+  // Ordenação (R2.4: por defeito alfabética; R1.4: lista nativa; a escolha fica guardada no aparelho). Empates e clientes sem serviços: por nome, no fim.
+  const porNome=(a,b)=>(a.nome||"").localeCompare(b.nome||"","pt"), L=c=>last[c.nome]||"";
+  const ORD={ nome:porNome, num:(a,b)=>(+a.cod||0)-(+b.cod||0)||porNome(a,b),
+    recente:(a,b)=>L(b).localeCompare(L(a))||porNome(a,b),
+    fat:(a,b)=>(fat[b.nome]||0)-(fat[a.nome]||0)||porNome(a,b),
+    vezes:(a,b)=>(n[b.nome]||0)-(n[a.nome]||0)||porNome(a,b),
+    parado:(a,b)=>(!L(a)-!L(b))||L(a).localeCompare(L(b))||porNome(a,b) };
+  const ORD_LBL=[["nome","Nome (A–Z)"],["num","N.º de cliente"],["recente","Atividade mais recente"],["fat","Mais faturado"],["vezes","Mais serviços"],["parado","Mais tempo sem serviço"]];
   // Arquivo de clientes: os arquivados saem da lista e das sugestões, mas o histórico mantém-se (R2.3: opção rara só aparece quando existe).
   const all=list("clientes"), nArq=all.filter(c=>c.arquivado).length, nAtv=all.length-nArq; if (!nArq) ui.cliArq=false;
-  const rows=all.filter(c=>!!c.arquivado===ui.cliArq).filter(c=>matchQ([c.nome,c.nif,c.email,c.tel].join(" "))).sort((a,b)=>(a.nome||"").localeCompare(b.nome||"","pt"));
+  const rows=all.filter(c=>!!c.arquivado===ui.cliArq).filter(c=>matchQ([c.nome,c.nif,c.email,c.tel].join(" "))).sort(ORD[ui.cliOrd]||ORD.nome);
   return header("Clientes", `${nAtv} cliente${nAtv===1?"":"s"}${nArq?` · ${nArq} arquivado${nArq===1?"":"s"}`:""}${ATU.length?` · <span class="gold">${ATU.length} atualizaç${ATU.length>1?"ões":"ão"} de dados por rever</span>`:""}`)
     + (ATU.length ? `<section class="grp"><div class="grp-h"><span class="t">Dados enviados pelos clientes</span><span class="s">${ATU.length}</span></div>${ATU.map(atualCard).join("")}</section>` : "")
     + searchBox("Procurar nome, NIF ou telefone")
-    + (nArq ? `<div class="tools"><div class="seg"><button data-cliarq="0" aria-pressed="${!ui.cliArq}">Ativos</button><button data-cliarq="1" aria-pressed="${ui.cliArq}">Arquivados (${nArq})</button></div></div>` : "")
+    + `<div class="tools"><label class="ord"><span>Ordenar</span><select class="yr" data-cliord aria-label="Ordenar clientes por">${ORD_LBL.map(([k,l])=>`<option value="${k}" ${ui.cliOrd===k?"selected":""}>${l}</option>`).join("")}</select></label>${nArq ? `<div class="seg"><button data-cliarq="0" aria-pressed="${!ui.cliArq}">Ativos</button><button data-cliarq="1" aria-pressed="${ui.cliArq}">Arquivados (${nArq})</button></div>` : ""}</div>`
     + rows.map(c=>`<button class="row" data-cli="${esc(c._id)}"><span class="r-date"><b>${esc(c.cod??"")}</b>nº</span>
       <span><span class="r-title"><span class="nm">${esc(c.nome)}</span>${cliDesc(c)?`<span class="pill p-fa">${DESC_LBL[cliDesc(c)]}</span>`:""}</span>
       <span class="r-sub">${n[c.nome]||0} serviços${last[c.nome]?" · último "+fmtD(last[c.nome]):""}</span></span>
@@ -1391,6 +1400,7 @@ const main=$("#main");
 main.addEventListener("input",e=>{ if (e.target.id==="q"){ ui.q=e.target.value; render(); } });
 main.addEventListener("change",e=>{
   const t=e.target;
+  if (t.dataset.cliord!=null){ ui.cliOrd=t.value; try{localStorage.setItem("cw2.cliord",ui.cliOrd);}catch(x){} render(); return; }
   if (t.dataset.yr!=null){ ui.year=t.value; try{localStorage.setItem("cw2.year",ui.year);}catch(x){} render(); return; }
   if (ui.tab==="custos") cuChange(t);
   if (ui.tab==="produtos" && t.dataset.uso){ patchCustos({produtos:{[t.dataset.uso]:{emUso:t.checked}}}).then(()=>toast(t.checked?"Em uso.":"Retirado de uso."),writeErr); }

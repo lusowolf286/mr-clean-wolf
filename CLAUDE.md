@@ -40,6 +40,7 @@ Todas as alterações seguem **[docs/REGRAS-DE-QUALIDADE.md](docs/REGRAS-DE-QUAL
 - R2.2: clientes arquivados saem da lista e das sugestões de nome ao marcar um serviço; marcar um serviço para um cliente arquivado repõe-o automaticamente.
 - R1.5/R2.1: rodapé da ficha com 3 botões (Arquivar · Editar · Fechar), numa só linha a 375 px (E2.2).
 - Exportação de clientes (.csv) com a coluna «Arquivado». Cache `cw-gestao-v16`; compilação iOS 3.
+- R1.4/R2.4: «Ordenar» na lista de clientes com lista nativa de 6 opções (nome, n.º de cliente, atividade mais recente, mais faturado, mais serviços, mais tempo sem serviço); por defeito alfabética e a escolha fica guardada no aparelho. Cache `cw-gestao-v17`.
 
 ## 4. Última auditoria (E4/E5) — 29/09/2026
 - Supabase (conector): RLS ativo em todas as tabelas; nada legível sem sessão; um cliente só vê os seus dados (testado). Avisos de funções *SECURITY DEFINER* e de `social_privado` sem regras são intencionais. 5 regras de acesso otimizadas com `(select auth.jwt())` — `supabase/otimizacao_rls.sql`, aplicado a 29/09/2026.
