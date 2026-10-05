@@ -35,6 +35,12 @@ Todas as alterações seguem **[docs/REGRAS-DE-QUALIDADE.md](docs/REGRAS-DE-QUAL
 - E1.3: calculadora de diluição com teclado decimal e Enter a fechar o teclado; E3.5 mensagem de erro em linguagem corrente.
 - E2.1/E2.2/E2.4: margens seguras, testado a 375 × 667 e 1280 × 800 sem deslocamento horizontal; toques ≥ 44 px.
 
+**05/10/2026 — arquivo de clientes (gestão)**
+- R2.3: «Arquivar» / «Repor» na ficha do cliente; o filtro «Ativos · Arquivados» só aparece quando há clientes arquivados. Arquivar não apaga nada (serviços, faturas e área de cliente mantêm-se) e é reversível.
+- R2.2: clientes arquivados saem da lista e das sugestões de nome ao marcar um serviço; marcar um serviço para um cliente arquivado repõe-o automaticamente.
+- R1.5/R2.1: rodapé da ficha com 3 botões (Arquivar · Editar · Fechar), numa só linha a 375 px (E2.2).
+- Exportação de clientes (.csv) com a coluna «Arquivado». Cache `cw-gestao-v16`; compilação iOS 3.
+
 ## 4. Última auditoria (E4/E5) — 29/09/2026
 - Supabase (conector): RLS ativo em todas as tabelas; nada legível sem sessão; um cliente só vê os seus dados (testado). Avisos de funções *SECURITY DEFINER* e de `social_privado` sem regras são intencionais. 5 regras de acesso otimizadas com `(select auth.jwt())` — `supabase/otimizacao_rls.sql`, aplicado a 29/09/2026.
 - E4: sem segredos no código. `config.js` tem apenas a chave *publishable* (acesso controlado por RLS); tokens de Meta, YouTube e TikTok e a chave *secret* estão nos segredos da *Edge Function* `social-sync`.

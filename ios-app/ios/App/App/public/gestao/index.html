@@ -393,7 +393,7 @@ const svgI = k => `<svg viewBox="0 0 24 24" aria-hidden="true">${IC[k]||""}</svg
 const S = { servicos:{}, movimentos:{}, compras:{}, clientes:{}, cfg:null, custos:null };
 const loaded = new Set();
 let db=null, dl=null, assets=null, online=null, readOnly=false;
-const ui = { tab:"resumo", year:String(new Date().getFullYear()), q:"", conta:"Principal", ctipo:"todos" };
+const ui = { tab:"resumo", year:String(new Date().getFullYear()), q:"", conta:"Principal", ctipo:"todos", cliArq:false };
 try { const t=localStorage.getItem("cw2.tab"); if (t) ui.tab=t; const y=localStorage.getItem("cw2.year"); if (y) ui.year=y; } catch(e){}
 
 /* ============ util ============ */
@@ -875,14 +875,17 @@ function descricaoFatura(r){
 /* ---------- Clientes ---------- */
 function vClientes(){
   const fat={},n={},last={}; for (const r of list("servicos")){ fat[r.cli]=(fat[r.cli]||0)+(+r.fat||0); n[r.cli]=(n[r.cli]||0)+1; if (!last[r.cli]||r.d>last[r.cli]) last[r.cli]=r.d; }
-  const rows=list("clientes").filter(c=>matchQ([c.nome,c.nif,c.email,c.tel].join(" "))).sort((a,b)=>(a.nome||"").localeCompare(b.nome||"","pt"));
-  return header("Clientes", `${rows.length} clientes${ATU.length?` · <span class="gold">${ATU.length} atualizaç${ATU.length>1?"ões":"ão"} de dados por rever</span>`:""}`)
+  // Arquivo de clientes: os arquivados saem da lista e das sugestões, mas o histórico mantém-se (R2.3: opção rara só aparece quando existe).
+  const all=list("clientes"), nArq=all.filter(c=>c.arquivado).length, nAtv=all.length-nArq; if (!nArq) ui.cliArq=false;
+  const rows=all.filter(c=>!!c.arquivado===ui.cliArq).filter(c=>matchQ([c.nome,c.nif,c.email,c.tel].join(" "))).sort((a,b)=>(a.nome||"").localeCompare(b.nome||"","pt"));
+  return header("Clientes", `${nAtv} cliente${nAtv===1?"":"s"}${nArq?` · ${nArq} arquivado${nArq===1?"":"s"}`:""}${ATU.length?` · <span class="gold">${ATU.length} atualizaç${ATU.length>1?"ões":"ão"} de dados por rever</span>`:""}`)
     + (ATU.length ? `<section class="grp"><div class="grp-h"><span class="t">Dados enviados pelos clientes</span><span class="s">${ATU.length}</span></div>${ATU.map(atualCard).join("")}</section>` : "")
     + searchBox("Procurar nome, NIF ou telefone")
+    + (nArq ? `<div class="tools"><div class="seg"><button data-cliarq="0" aria-pressed="${!ui.cliArq}">Ativos</button><button data-cliarq="1" aria-pressed="${ui.cliArq}">Arquivados (${nArq})</button></div></div>` : "")
     + rows.map(c=>`<button class="row" data-cli="${esc(c._id)}"><span class="r-date"><b>${esc(c.cod??"")}</b>nº</span>
       <span><span class="r-title"><span class="nm">${esc(c.nome)}</span>${cliDesc(c)?`<span class="pill p-fa">${DESC_LBL[cliDesc(c)]}</span>`:""}</span>
       <span class="r-sub">${n[c.nome]||0} serviços${last[c.nome]?" · último "+fmtD(last[c.nome]):""}</span></span>
-      <span class="r-amt"><b>${eur0(fat[c.nome]||0)}</b></span></button>`).join("") || `<div class="empty">Nenhum cliente encontrado.</div>`;
+      <span class="r-amt"><b>${eur0(fat[c.nome]||0)}</b></span></button>`).join("") || `<div class="empty">${ui.cliArq?"Nenhum cliente arquivado encontrado.":"Nenhum cliente encontrado."}</div>`;
 }
 
 /* ---------- Compras ---------- */
@@ -1019,7 +1022,7 @@ async function exportar(k){
   if (k==="servicos") rows=[["Data","Hora","Estado","Cliente","Viatura","Matrícula","Categoria",...SV.map(s=>s.c),"Produtos à parte","Desconto","Faturado","Fatura","Produtos","Horas","Mão de obra","Resultado líquido","Notas"],...list(k).sort(byDateDesc).reverse().map(r=>{ const c=recCost(r.sv,r.cat); return [r.d,r.hora||"",EST[est(r)][1],r.cli,r.viatura||"",r.matricula||"",r.cat,...SV.map(s=>(r.sv||[]).includes(s.k)?"x":""),extrasSum(r),r.descTipo||(r.descPct?Math.round(r.descPct*100)+"%":""),r.fat,(r.fatura&&r.fatura.num)||fatEst(r),c.custo,c.horas,c.mo,resOf(r),r.notas||""]; })];
   if (k==="compras") rows=[["Data","Loja","Tipo","Montante","Nota"],...list(k).sort(byDateDesc).reverse().map(r=>[r.d,r.loja,r.tipo||"",r.val,r.nota||""])];
   if (k==="movimentos") rows=[["Data","Descrição","Montante","Conta"],...list(k).sort((a,b)=>(a.d||"").localeCompare(b.d||"")||(a.ord||0)-(b.ord||0)).map(r=>[r.d,r.desc,r.val,r.conta||"Principal"])];
-  if (k==="clientes") rows=[["Código","Nome","NIF","E-mail","Telefone","Morada","Desconto"],...list(k).sort((a,b)=>(a.cod||0)-(b.cod||0)).map(c=>[c.cod,c.nome,c.nif,c.email,c.tel,c.morada||"",DESC_LBL[cliDesc(c)]||""])];
+  if (k==="clientes") rows=[["Código","Nome","NIF","E-mail","Telefone","Morada","Desconto","Arquivado"],...list(k).sort((a,b)=>(a.cod||0)-(b.cod||0)).map(c=>[c.cod,c.nome,c.nif,c.email,c.tel,c.morada||"",DESC_LBL[cliDesc(c)]||"",c.arquivado?"Sim":""])];
   return save(`clean-wolf-${k}-${today()}.csv`, csv(rows));
 }
 
@@ -1141,7 +1144,7 @@ function editServico(id, preset){
     <div class="two"><label class="fld"><span class="lbl">Data</span><input type="date" id="f-d" value="${esc(f.d)}"></label><label class="fld"><span class="lbl">Hora</span><input type="time" id="f-h" value="${esc(f.hora)}"></label></div>
     <div class="sec-a"><button class="btn sm" type="button" id="sh-ics">${svgI("agenda")} Adicionar ao calendário</button></div>`)
   + sec(2,"Cliente e viatura",`<label class="fld"><span class="lbl">Cliente</span><input id="f-cli" data-sug="dl-cli" value="${esc(f.cli)}" placeholder="Nome" autocomplete="off"></label>
-    ${dlist("dl-cli",list("clientes").map(c=>c.nome))}
+    ${dlist("dl-cli",list("clientes").filter(c=>!c.arquivado).map(c=>c.nome))}
     <div class="two"><label class="fld"><span class="lbl">Viatura</span><input id="f-via" data-sug="dl-via" value="${esc(f.viatura)}" placeholder="Marca e modelo"></label><label class="fld"><span class="lbl">Matrícula</span><input id="f-mat" value="${esc(f.matricula)}" placeholder="AA-00-AA" autocapitalize="characters"></label></div>
     ${dlist("dl-via",[...list("servicos").map(r=>r.viatura),...list("clientes").flatMap(c=>(c.viaturas||[]).map(v=>v.viatura))])}
     <div class="fld"><span class="lbl">Categoria do veículo</span><div class="cats" id="f-cat">${CATS.map(c=>`<button type="button" data-cat="${c}" aria-pressed="${f.cat===c}">${c}</button>`).join("")}</div></div>`)
@@ -1216,6 +1219,7 @@ function editServico(id, preset){
       try {
         await putItem("servicos",rid,rec); queuePortal(f.cli); if (ex && ex.cli!==f.cli) queuePortal(ex.cli);
         if (!clientByName(f.cli)){ const cod=Math.max(0,...list("clientes").map(x=>+x.cod||0))+1; await putItem("clientes",newId("k"),{cod,nome:f.cli,nif:"",email:"",tel:"",familia:false}); }
+        else { const ck=clientByName(f.cli); if (ck.arquivado && (!ex || ex.cli!==f.cli)) await arquivarCliente(ck._id,false); }
         if (!ex && preset.pedido && pedidosApi){ try { await pedidosApi.update(preset.pedido,{estado:"aceite",servico_id:rid}); PED=PED.filter(x=>x.id!==preset.pedido); schedule(); } catch(err){ console.error(err); toast("Serviço marcado, mas o pedido não foi atualizado."); return; } }
         toast(ex?"Serviço atualizado.":preset.pedido?"Pedido aceite e serviço marcado.":"Serviço marcado.");
       } catch(e){ writeErr(e); }
@@ -1256,7 +1260,7 @@ function openCliente(cid){
   const svc=list("servicos").filter(r=>r.cli===c.nome).sort(byDateDesc);
   const fat=svc.reduce((a,r)=>a+(+r.fat||0),0), rl=svc.reduce((a,r)=>a+resOf(r),0);
   const vias=viasDe(c);
-  const body=`<div class="kpis" style="grid-template-columns:repeat(3,minmax(0,1fr))"><div class="kpi"><span class="lbl">Serviços</span><span class="v">${svc.length}</span></div><div class="kpi"><span class="lbl">Faturado</span><span class="v">${eur0(fat)}</span></div><div class="kpi"><span class="lbl">Resultado</span><span class="v gold">${eur0(rl)}</span></div></div>
+  const body=`${c.arquivado?`<p class="note"><b>Cliente arquivado</b>${c.arquivadoEm?" em "+fmtD(c.arquivadoEm):""}. Não aparece na lista nem nas sugestões; o histórico mantém-se.</p>`:""}<div class="kpis" style="grid-template-columns:repeat(3,minmax(0,1fr))"><div class="kpi"><span class="lbl">Serviços</span><span class="v">${svc.length}</span></div><div class="kpi"><span class="lbl">Faturado</span><span class="v">${eur0(fat)}</span></div><div class="kpi"><span class="lbl">Resultado</span><span class="v gold">${eur0(rl)}</span></div></div>
     <div class="kv"><span>NIF</span><span class="n">${esc(fmtNif(c.nif)||"—")}</span><span>Telefone</span><span class="n">${esc(fmtTel(c.tel)||"—")}</span><span>E-mail</span><span>${esc(c.email||"—")}</span><span>Morada</span><span style="white-space:pre-line">${esc(c.morada||"—")}</span><span>Desconto</span><span>${cliDesc(c)?DESC_LBL[cliDesc(c)]+" ("+nf0.format(descRates()[cliDesc(c)]*100)+" %)":"—"}</span>
     ${vias.length?`<span>Viaturas</span><span>${vias.map(r=>esc([r.viatura,r.matricula].filter(Boolean).join(" · "))).join("<br>")}</span>`:""}</div>
     <div class="cacts"><button class="btn" type="button" id="c-sms">${svgI("clientes")}<span>Enviar acesso<br>por SMS</span></button><button class="btn" type="button" id="c-dados">${svgI("faturas")}<span>Pedir atualização<br>de dados</span></button></div>
@@ -1265,14 +1269,17 @@ function openCliente(cid){
       <span class="r-sub">${(r.sv||[]).map(k=>`<span class="chip">${esc(SVK[k]?SVK[k].l:k)}</span>`).join("")}${(r.extras||[]).map(x=>`<span class="chip">${esc(x.nome)}</span>`).join("")}</span>
       ${r.notas?`<span style="font-size:14px;white-space:pre-wrap">${esc(r.notas)}</span>`:""}
       ${(r.fotos||[]).length?`<span class="thumbs">${r.fotos.map(p=>photoImg(p,"")).join("")}</span>`:""}</button>`; }).join("")||`<div class="note">Ainda sem serviços.</div>`}</div>`;
-  openSheet(c.nome, body, `<button class="btn" type="button" id="c-edit">Editar dados</button><span class="sp"></span><button class="btn" type="button" id="sh-cancel">Fechar</button>`, close=>{
+  openSheet(c.nome, body, `<button class="btn" type="button" id="c-arq">${c.arquivado?"Repor":"Arquivar"}</button><button class="btn" type="button" id="c-edit">Editar</button><span class="sp"></span><button class="btn" type="button" id="sh-cancel">Fechar</button>`, close=>{
     $("#sh-cancel").onclick=close; $("#c-edit").onclick=()=>{ close(); editCliente(cid); };
+    $("#c-arq").onclick=async()=>{ close(); try { await arquivarCliente(cid,!c.arquivado); toast(c.arquivado?"Cliente reposto na lista.":"Cliente arquivado."); } catch(e){ writeErr(e); } };
     $("#c-sms").onclick=()=>smsAcesso(c);
     $("#c-dados").onclick=()=>smsDados(c);
     $("#c-new").onclick=()=>{ close(); editServico(null,{cli:c.nome}); };
     $("#sh-form").addEventListener("click",e=>{ const b=e.target.closest("[data-edit]"); if (!b) return; close(); editServico(b.dataset.edit.split(":")[1]); });
   }, true);
 }
+// Arquivar é reversível e não apaga nada: serviços, faturas e acesso à área de cliente ficam como estão.
+async function arquivarCliente(cid,arq){ const c=S.clientes[cid]; if (!c) return; const rec=clean(c); if (arq){ rec.arquivado=true; rec.arquivadoEm=today(); } else { delete rec.arquivado; delete rec.arquivadoEm; } await putItem("clientes",cid,rec); }
 function editCliente(id){
   const ex=id?S.clientes[id]:null, cod=ex?ex.cod:Math.max(0,...list("clientes").map(x=>+x.cod||0))+1;
   const body=`<div class="two"><label class="fld"><span class="lbl">Código</span><input id="k-cod" inputmode="numeric" value="${esc(cod)}"></label><label class="fld"><span class="lbl">NIF</span><input id="k-nif" inputmode="numeric" value="${esc(ex?ex.nif:"")}"></label></div>
@@ -1405,6 +1412,7 @@ main.addEventListener("click", async e=>{
   const ano=e.target.closest("[data-atu-no]"); if (ano){ ano.disabled=true; atualDescartar(ano.dataset.atuNo); return; }
   const cp=e.target.closest("[data-copy]"); if (cp){ copyFatura(cp.dataset.copy); return; }
   const cn=e.target.closest("[data-conta]"); if (cn){ ui.conta=cn.dataset.conta; render(); return; }
+  const ca=e.target.closest("[data-cliarq]"); if (ca){ ui.cliArq=ca.dataset.cliarq==="1"; render(); return; }
   const ct=e.target.closest("[data-ctipo]"); if (ct){ ui.ctipo=ct.dataset.ctipo; render(); return; }
   const ex=e.target.closest("[data-export]"); if (ex){ exportar(ex.dataset.export); return; }
   const cnt=e.target.closest("[data-count]"); if (cnt){ countStock(cnt.dataset.count); return; }
