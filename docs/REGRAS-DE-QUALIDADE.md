@@ -6,6 +6,8 @@ As regras têm um identificador fixo para poderem ser citadas em revisões e men
 
 **Versão 1 — 28/09/2026.** Parte A com as regras de ouro 1 a 5; Parte B com os erros 1 a 5. Novas regras acrescentam-se no fim de cada parte (A6, B6, …), sem renumerar as existentes.
 
+**Versão 1.1 — 20/10/2026.** Acrescentada a regra E4.5 (permissões explícitas nas tabelas novas do Supabase, por causa da alteração da Supabase de 30/10/2026) e a pergunta 13 da lista de verificação.
+
 ---
 
 ## Parte A — Regras de ouro de UX
@@ -120,6 +122,7 @@ As regras têm um identificador fixo para poderem ser citadas em revisões e men
 - **E4.2** Só podem estar na app chaves **públicas por desenho**, cujo acesso é controlado no servidor (ex.: a chave *publishable/anon* do Supabase com regras RLS ativas em todas as tabelas).
 - **E4.3** A chave `service_role`/*secret* do Supabase nunca sai do servidor.
 - **E4.4** Se uma chave secreta chegar a ser publicada, considerá-la comprometida: revogá-la e criar outra (apagar o ficheiro não chega).
+- **E4.5** Cada tabela nova no esquema `public` é criada numa migração que inclui, no mesmo ficheiro, a tabela, `enable row level security`, as regras de acesso e os `GRANT` explícitos. Desde 30/10/2026 a Supabase não dá acesso automático pela Data API às tabelas novas; sem `GRANT` a app recebe «permission denied», também em projetos novos, *preview branches* e `supabase db reset`. Dar só o necessário: `authenticated` conforme as regras RLS; `service_role` só quando uma *Edge Function* precisa; `anon` só para conteúdo público, legível sem sessão. O esquema não é alterado só no editor SQL do painel.
 
 ### B5. Não auditar contra as regras da App Store e do Google Play
 
@@ -152,10 +155,12 @@ As regras têm um identificador fixo para poderem ser citadas em revisões e men
 | 10 | Sem rede ou com erro, há mensagem clara e botão «Tentar de novo»? | E3.1–E3.4 |
 | 11 | Há alguma chave secreta no código ou no repositório? | E4.1–E4.3 |
 | 12 | A versão cumpre as regras da App Store / Google Play (privacidade, permissões, contas)? | E5.1–E5.6 |
+| 13 | As tabelas novas foram criadas numa migração com RLS, regras de acesso e `GRANT` explícitos, sem acesso do `anon` a dados privados? | E4.5 |
 
 ## Como aplicar em cada tecnologia
 
 - **Web / PWA (HTML, CSS, JS):** secções com título (`.sec`) para dividir formulários e menus; `btn pri` só na ação principal; `fmtTel`/`fmtNif` para mostrar números agrupados; `shared/ios.js` em todas as páginas com campos; faixa de erro com botão «Tentar de novo».
+- **Supabase:** esquema em `supabase/migrations/`; cada tabela nova parte do modelo `supabase/modelos/nova_tabela.sql` (tabela + RLS + regras + `GRANT` no mesmo ficheiro); depois de aplicar, ver os avisos de segurança do painel e testar com e sem sessão iniciada.
 - **iOS (SwiftUI):** componentes nativos (`NavigationStack`, `toolbar`, `confirmationDialog`, `swipeActions`); um `HUDPrimaryButton` por ecrã; espaço pequeno dentro dos grupos e grande entre grupos; textos novos sempre com tradução PT-PT em `Localizable.xcstrings`.
 
 ## Registo de aplicação

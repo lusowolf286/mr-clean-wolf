@@ -12,6 +12,7 @@ Todas as alterações seguem **[docs/REGRAS-DE-QUALIDADE.md](docs/REGRAS-DE-QUAL
 - A app iOS (`ios-app/`) embute uma cópia de `gestao/`. Depois de alterar `gestao/`, `shared/` ou `config.js`, atualizar a cópia (`cd ios-app && npm run sync`) e aumentar `CURRENT_PROJECT_VERSION`.
 - Ao alterar ficheiros servidos, aumentar a versão da cache em `gestao/sw.js` / `cliente/sw.js`.
 - Só a chave pública (*publishable/anon*) do Supabase pode estar em `config.js`; segredos ficam nas *Edge Functions* (E4).
+- Base de dados (E4.5): o esquema vive em `supabase/migrations/`. Desde 30/10/2026 a Supabase não dá acesso automático às tabelas novas em `public`, por isso cada tabela nova é criada numa migração que inclui, no mesmo ficheiro, `create table`, `enable row level security`, as regras de acesso e os `GRANT` explícitos — partir de `supabase/modelos/nova_tabela.sql`. O `anon` não recebe acesso a tabelas (só conteúdo público); o `service_role` só onde uma *Edge Function* precisa. Não alterar o esquema só no editor SQL do painel.
 - `site/` é o site público www.mrcleanwolf.com (substitui o Carrd). Publicado pela Cloudflare Pages (projeto `mrcleanwolf-site`, pasta de saída `site`, sem compilação): cada *push* para `main` atualiza o site. Uma só página, sem dependências além das fontes Google.
 
 ## 3. Registo de aplicação das regras
@@ -46,7 +47,14 @@ Todas as alterações seguem **[docs/REGRAS-DE-QUALIDADE.md](docs/REGRAS-DE-QUAL
 - R1.4/R2.4: as marcações vão para o calendário escolhido pelo utilizador na lista nativa do iOS (pedido na primeira sincronização e guardado); mudar em «Exportar → Calendário do iPhone para as marcações». Marcações já sincronizadas mudam para o calendário escolhido na sincronização seguinte. Cache `cw-gestao-v19`; compilação iOS 4.
 - R3.2: «Enviar ao cliente por SMS» junto da data, na secção 1 da ficha de serviço: SMS com a data e um link `www.mrcleanwolf.com/m#…` (página `site/m/`) que junta a marcação ao calendário do cliente (calendário do telemóvel ou Google Calendar, com lembrete na véspera). Os dados vão no próprio link; não vai nome, telefone nem preço. E3.5: link incompleto mostra mensagem em linguagem corrente.
 
+**20/10/2026 — permissões explícitas na base de dados (aviso Supabase de 30/10/2026)**
+- E4.5: migração de base `supabase/migrations/20260926000000_baseline.sql` com o esquema de produção (7 tabelas, funções, RLS, 13 regras de acesso, `GRANT` explícitos, fotografias e tempo real); permissões comparadas com produção e coincidentes. Ainda por registar no histórico de produção (`supabase migration repair --status applied 20260926000000`, ver `supabase/migrations/README.md`).
+- E4.5: `otimizacao_rls.sql` passa também a migração versionada (`20260929033109`), igual à registada em produção.
+- E4.5: modelo `supabase/modelos/nova_tabela.sql` para tabelas novas.
+- Produção não foi alterada: as tabelas existentes mantêm as permissões e o projeto já não dava permissões automáticas a tabelas novas criadas pelo `postgres`.
+
 ## 4. Última auditoria (E4/E5) — 29/09/2026
+- 20/10/2026, avisos de segurança do Supabase: além dos intencionais (funções *SECURITY DEFINER* do link de dados e `is_admin`; `social_privado` sem regras), há dois pendentes de decisão — extensão `pg_net` no esquema `public` e proteção contra palavras-passe divulgadas desligada (Auth).
 - Supabase (conector): RLS ativo em todas as tabelas; nada legível sem sessão; um cliente só vê os seus dados (testado). Avisos de funções *SECURITY DEFINER* e de `social_privado` sem regras são intencionais. 5 regras de acesso otimizadas com `(select auth.jwt())` — `supabase/otimizacao_rls.sql`, aplicado a 29/09/2026.
 - E4: sem segredos no código. `config.js` tem apenas a chave *publishable* (acesso controlado por RLS); tokens de Meta, YouTube e TikTok e a chave *secret* estão nos segredos da *Edge Function* `social-sync`.
 - E5: permissões com justificação em português (câmara, fotografias, calendário, Face ID); política de privacidade acessível. Pendentes: a área de cliente cria contas — se um dia for publicada na App Store, tem de permitir apagar a conta dentro da app (E5.4); confirmar no Xcode que `PrivacyInfo.xcprivacy` aparece em *Build Phases → Copy Bundle Resources*.
