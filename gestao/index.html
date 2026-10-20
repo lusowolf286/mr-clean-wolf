@@ -621,6 +621,20 @@ async function smsAcesso(c){
   const body=`Olá! Gostaríamos de convidá-lo a aceder à sua área de cliente onde poderá consultar o histórico dos seus serviços feitos connosco, bem como fazer marcações para os seus próximos serviços!\n${semProto(CLIENTE_LINK)}\nEntre com o e-mail ${c.email}.`;
   openSms(num, body);
 }
+/* ---- marcação confirmada → SMS ao cliente com link para a juntar ao calendário dele (R3.2: junto da data) ----
+   Os dados vão no próprio link (www.mrcleanwolf.com/m#…); nada fica guardado no servidor. Sem nome nem preço do cliente no link. */
+const MARC_URL = (window.CW_CONFIG && CW_CONFIG.marcacaoLink) || "https://www.mrcleanwolf.com/m#";
+const b64u = s => btoa(unescape(encodeURIComponent(s))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+function smsMarcacao(r){
+  if (!r.d){ toast("Indique primeiro a data da marcação."); return; }
+  const c=clientByName(r.cli), num=smsNumber(c&&c.tel);
+  if (num.replace(/\D/g,"").length<9){ toast("Falta o telemóvel do cliente. Abra a ficha do cliente e use «Editar»."); return; }
+  const hora=r.hora||"09:00", mins=Math.max(60,Math.round(recCost(r.sv,r.cat).horas*60));
+  const sv=(r.sv||[]).map(k=>SVK[k]?SVK[k].l:k).join(", "), via=[r.viatura,r.matricula].filter(Boolean).join(" ");
+  const link=semProto(MARC_URL)+b64u(JSON.stringify({d:r.d,h:hora,m:mins,s:sv||undefined,v:via||undefined,i:r._id||undefined}));
+  const dia=new Date(r.d+"T12:00:00").toLocaleDateString("pt-PT",{weekday:"long",day:"numeric",month:"long"});
+  openSms(num, `Olá! A sua marcação na Mr Clean Wolf está confirmada para ${dia}, às ${hora}.\nPara a juntar ao seu calendário, abra este link:\n${link}\nAté breve!`);
+}
 /* ---- pedido de atualização de dados (link único por SMS, sem conta) ---- */
 let atualApi=null, ATU=[];
 const DADOS_URL = (window.CW_CONFIG && CW_CONFIG.dadosLink) || "https://lusowolf286.github.io/mr-clean-wolf/d/#";
@@ -1151,7 +1165,7 @@ function editServico(id, preset){
   const body=
     sec(1,"Marcação",`<div class="fld"><span class="lbl">Estado</span><div class="st" id="f-st">${ESTADOS.map(e=>`<button type="button" data-st="${e[0]}" aria-pressed="${f.estado===e[0]}">${e[1]}</button>`).join("")}</div></div>
     <div class="two"><label class="fld"><span class="lbl">Data</span><input type="date" id="f-d" value="${esc(f.d)}"></label><label class="fld"><span class="lbl">Hora</span><input type="time" id="f-h" value="${esc(f.hora)}"></label></div>
-    <div class="sec-a"><button class="btn sm" type="button" id="sh-ics">${svgI("agenda")} Adicionar ao calendário</button></div>`)
+    <div class="sec-a"><button class="btn sm" type="button" id="sh-ics">${svgI("agenda")} Adicionar ao calendário</button><button class="btn sm" type="button" id="sh-sms-m">${svgI("clientes")} Enviar ao cliente por SMS</button></div>`)
   + sec(2,"Cliente e viatura",`<label class="fld"><span class="lbl">Cliente</span><input id="f-cli" data-sug="dl-cli" value="${esc(f.cli)}" placeholder="Nome" autocomplete="off"></label>
     ${dlist("dl-cli",list("clientes").filter(c=>!c.arquivado).map(c=>c.nome))}
     <div class="two"><label class="fld"><span class="lbl">Viatura</span><input id="f-via" data-sug="dl-via" value="${esc(f.viatura)}" placeholder="Marca e modelo"></label><label class="fld"><span class="lbl">Matrícula</span><input id="f-mat" value="${esc(f.matricula)}" placeholder="AA-00-AA" autocapitalize="characters"></label></div>
@@ -1212,6 +1226,7 @@ function editServico(id, preset){
     paint();
     const collect=()=>{ f.d=$("#f-d").value; f.hora=$("#f-h").value; f.cli=$("#f-cli").value.trim(); f.viatura=$("#f-via").value.trim(); f.matricula=$("#f-mat").value.trim().toUpperCase(); f.notas=$("#f-notas").value; f.vis=$("#f-vis").checked; };
     $("#sh-pdf").onclick=()=>{ collect(); orcamentoPDF(f, dirty?calcServico(f):current()); };
+    $("#sh-sms-m").onclick=()=>{ collect(); smsMarcacao(Object.assign({_id:id||""},f)); };
     $("#sh-ics").onclick=()=>{ collect(); const c=current(); save(`agendamento-${today()}.ics`, ics([Object.assign({_id:id||newId("t")},f,{fat:c.fat})])); };
     wireDelete(async()=>{ close(); try { await delItem("servicos",id); queuePortal(ex.cli); toast("Serviço apagado."); } catch(e){ writeErr(e); } });
     $("#sh-save").onclick=async()=>{

@@ -44,6 +44,7 @@ Todas as alterações seguem **[docs/REGRAS-DE-QUALIDADE.md](docs/REGRAS-DE-QUAL
 
 **20/10/2026 — calendário do negócio (app iOS)**
 - R1.4/R2.4: as marcações vão para o calendário escolhido pelo utilizador na lista nativa do iOS (pedido na primeira sincronização e guardado); mudar em «Exportar → Calendário do iPhone para as marcações». Marcações já sincronizadas mudam para o calendário escolhido na sincronização seguinte. Cache `cw-gestao-v18`; compilação iOS 4.
+- R3.2: «Enviar ao cliente por SMS» junto da data, na secção 1 da ficha de serviço: SMS com a data e um link `www.mrcleanwolf.com/m#…` (página `site/m/`) que junta a marcação ao calendário do cliente (calendário do telemóvel ou Google Calendar, com lembrete na véspera). Os dados vão no próprio link; não vai nome, telefone nem preço. E3.5: link incompleto mostra mensagem em linguagem corrente.
 
 ## 4. Última auditoria (E4/E5) — 29/09/2026
 - Supabase (conector): RLS ativo em todas as tabelas; nada legível sem sessão; um cliente só vê os seus dados (testado). Avisos de funções *SECURITY DEFINER* e de `social_privado` sem regras são intencionais. 5 regras de acesso otimizadas com `(select auth.jwt())` — `supabase/otimizacao_rls.sql`, aplicado a 29/09/2026.
