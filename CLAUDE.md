@@ -42,6 +42,9 @@ Todas as alterações seguem **[docs/REGRAS-DE-QUALIDADE.md](docs/REGRAS-DE-QUAL
 - Exportação de clientes (.csv) com a coluna «Arquivado». Cache `cw-gestao-v16`; compilação iOS 3.
 - R1.4/R2.4: «Ordenar» na lista de clientes com lista nativa de 6 opções (nome, n.º de cliente, atividade mais recente, mais faturado, mais serviços, mais tempo sem serviço); por defeito alfabética e a escolha fica guardada no aparelho. Cache `cw-gestao-v17`.
 
+**20/10/2026 — calendário do negócio (app iOS)**
+- R1.4/R2.4: as marcações vão para o calendário escolhido pelo utilizador na lista nativa do iOS (pedido na primeira sincronização e guardado); mudar em «Exportar → Calendário do iPhone para as marcações». Marcações já sincronizadas mudam para o calendário escolhido na sincronização seguinte. Cache `cw-gestao-v18`; compilação iOS 4.
+
 ## 4. Última auditoria (E4/E5) — 29/09/2026
 - Supabase (conector): RLS ativo em todas as tabelas; nada legível sem sessão; um cliente só vê os seus dados (testado). Avisos de funções *SECURITY DEFINER* e de `social_privado` sem regras são intencionais. 5 regras de acesso otimizadas com `(select auth.jwt())` — `supabase/otimizacao_rls.sql`, aplicado a 29/09/2026.
 - E4: sem segredos no código. `config.js` tem apenas a chave *publishable* (acesso controlado por RLS); tokens de Meta, YouTube e TikTok e a chave *secret* estão nos segredos da *Edge Function* `social-sync`.

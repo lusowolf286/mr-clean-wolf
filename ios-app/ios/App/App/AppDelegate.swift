@@ -1,6 +1,7 @@
 import UIKit
 import Capacitor
 import EventKit
+import EventKitUI
 import LocalAuthentication
 
 @UIApplicationMain
@@ -98,16 +99,19 @@ class MainViewController: CAPBridgeViewController {
 
 /// Funções chamadas pela app (shared/supa.js): partilhar ficheiros e gravar marcações no calendário.
 @objc(CWNativePlugin)
-public class CWNativePlugin: CAPPlugin, CAPBridgedPlugin {
+public class CWNativePlugin: CAPPlugin, CAPBridgedPlugin, EKCalendarChooserDelegate {
     public let identifier = "CWNativePlugin"
     public let jsName = "CWNative"
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "share", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "calendar", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "calendarChoose", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "biometric", returnType: CAPPluginReturnPromise)
     ]
     private let store = EKEventStore()
     private let mapKey = "cw.calendar.uids"
+    private let calKey = "cw.calendar.id"          // calendário escolhido para as marcações do negócio
+    private var pendingChoose: ((EKCalendar?) -> Void)?
 
     // PDF / CSV → folha de partilha do iOS (Mail, WhatsApp, Ficheiros, AirDrop…)
     @objc func share(_ call: CAPPluginCall) {
@@ -130,12 +134,12 @@ public class CWNativePlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
-    // Marcações → calendário predefinido do iPhone. Volta a exportar atualiza a mesma marcação, sem duplicar.
+    // Marcações → calendário do negócio escolhido no iPhone (pedido na primeira vez; R2.4: depois fica guardado).
+    // Voltar a exportar atualiza a mesma marcação, sem duplicar, e muda para o calendário escolhido as que estavam noutro.
     @objc func calendar(_ call: CAPPluginCall) {
         let events = call.getArray("events", JSObject.self) ?? []
-        let proceed: (Bool) -> Void = { granted in
-            DispatchQueue.main.async {
-                guard granted else { self.alert("Sem acesso ao calendário", "Autorize em Definições → Privacidade e segurança → Calendários → Clean Wolf."); call.resolve(["denied": true]); return }
+        withAccess(call) {
+            let go: (EKCalendar) -> Void = { cal in
                 var map = UserDefaults.standard.dictionary(forKey: self.mapKey) as? [String: String] ?? [:]
                 var added = 0, updated = 0
                 for e in events {
@@ -143,7 +147,8 @@ public class CWNativePlugin: CAPPlugin, CAPBridgedPlugin {
                     let uid = e["uid"] as? String ?? UUID().uuidString
                     var ev: EKEvent
                     if let id = map[uid], let old = self.store.event(withIdentifier: id) { ev = old; updated += 1 }
-                    else { ev = EKEvent(eventStore: self.store); ev.calendar = self.store.defaultCalendarForNewEvents; added += 1 }
+                    else { ev = EKEvent(eventStore: self.store); added += 1 }
+                    ev.calendar = cal
                     ev.title = e["title"] as? String ?? "Clean Wolf"
                     ev.notes = e["notes"] as? String
                     ev.location = e["location"] as? String
@@ -152,12 +157,61 @@ public class CWNativePlugin: CAPPlugin, CAPBridgedPlugin {
                     do { try self.store.save(ev, span: .thisEvent); map[uid] = ev.eventIdentifier } catch { continue }
                 }
                 UserDefaults.standard.set(map, forKey: self.mapKey)
-                self.alert("Calendário atualizado", "\(added) marcação(ões) adicionada(s), \(updated) atualizada(s).")
-                call.resolve(["added": added, "updated": updated])
+                self.alert("Calendário atualizado", "\(added) marcação(ões) adicionada(s), \(updated) atualizada(s) no calendário «\(cal.title)».")
+                call.resolve(["added": added, "updated": updated, "calendar": cal.title])
+            }
+            if let cal = self.savedCalendar() { go(cal) }
+            else { self.chooseCalendar { cal in if let cal = cal { go(cal) } else { call.resolve(["cancelled": true]) } } }
+        }
+    }
+
+    // Escolher (ou mudar) o calendário do negócio, a partir de «Exportar» na app.
+    @objc func calendarChoose(_ call: CAPPluginCall) {
+        withAccess(call) {
+            self.chooseCalendar { cal in
+                if let cal = cal { call.resolve(["calendar": cal.title]) } else { call.resolve(["cancelled": true]) }
+            }
+        }
+    }
+
+    private func withAccess(_ call: CAPPluginCall, _ body: @escaping () -> Void) {
+        let proceed: (Bool) -> Void = { granted in
+            DispatchQueue.main.async {
+                guard granted else { self.alert("Sem acesso ao calendário", "Autorize em Definições → Privacidade e segurança → Calendários → Clean Wolf."); call.resolve(["denied": true]); return }
+                body()
             }
         }
         if #available(iOS 17.0, *) { store.requestFullAccessToEvents { ok, _ in proceed(ok) } }
         else { store.requestAccess(to: .event) { ok, _ in proceed(ok) } }
+    }
+
+    private func savedCalendar() -> EKCalendar? {
+        guard let id = UserDefaults.standard.string(forKey: calKey), let cal = store.calendar(withIdentifier: id),
+              cal.allowsContentModifications else { return nil }
+        return cal
+    }
+
+    // Lista nativa de calendários do iOS (R1.4), só os que aceitam marcações novas.
+    private func chooseCalendar(_ done: @escaping (EKCalendar?) -> Void) {
+        guard let vc = bridge?.viewController else { done(nil); return }
+        let chooser = EKCalendarChooser(selectionStyle: .single, displayStyle: .writableCalendarsOnly, entityType: .event, eventStore: store)
+        chooser.title = "Calendário do negócio"
+        chooser.showsDoneButton = true
+        chooser.showsCancelButton = true
+        chooser.delegate = self
+        if let cal = savedCalendar() ?? store.defaultCalendarForNewEvents { chooser.selectedCalendars = [cal] }
+        pendingChoose = done
+        vc.present(UINavigationController(rootViewController: chooser), animated: true)
+    }
+
+    public func calendarChooserDidFinish(_ calendarChooser: EKCalendarChooser) {
+        let cal = calendarChooser.selectedCalendars.first
+        if let cal = cal { UserDefaults.standard.set(cal.calendarIdentifier, forKey: calKey) }
+        calendarChooser.dismiss(animated: true) { let f = self.pendingChoose; self.pendingChoose = nil; f?(cal) }
+    }
+
+    public func calendarChooserDidCancel(_ calendarChooser: EKCalendarChooser) {
+        calendarChooser.dismiss(animated: true) { let f = self.pendingChoose; self.pendingChoose = nil; f?(nil) }
     }
 
     // Desbloqueio com Face ID (ou código do iPhone, se o Face ID falhar)

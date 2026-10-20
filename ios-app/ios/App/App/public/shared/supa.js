@@ -203,13 +203,16 @@ function icsEvents(text){
 const toB64 = blob => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1] || ""); r.onerror = rej; r.readAsDataURL(blob); });
 
 const downloads = {
+  native: !!native,
+  /* app iOS: escolher o calendário do negócio onde ficam as marcações */
+  async chooseCalendar(){ if (!native) return null; const r = await callNative("calendarChoose", {}); return r && r.calendar || null; },
   async save({ filename, data }){
     const type = /\.ics$/i.test(filename) ? "text/calendar" : /\.csv$/i.test(filename) ? "text/csv;charset=utf-8" : /\.pdf$/i.test(filename) ? "application/pdf" : "application/octet-stream";
     const blob = data instanceof Blob ? data : new Blob([data], { type });
     if (native){
       if (/\.ics$/i.test(filename)){
         const r = await callNative("calendar", { events: icsEvents(typeof data === "string" ? data : await blob.text()) });
-        if (r && r.denied) throw { code:"declined" };
+        if (r && (r.denied || r.cancelled)) throw { code:"declined" };
         return { status:"delivered" };
       }
       try { await callNative("share", { filename, base64: await toB64(blob) }); return { status:"delivered" }; }

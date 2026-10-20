@@ -1021,7 +1021,7 @@ function vPrecos(){
 /* ---------- Exportar ---------- */
 function vExportar(){
   if (!dl) return header("Exportar","")+`<div class="card">A exportação não está disponível nesta vista.</div>`;
-  return header("Exportar","Ficheiros para abrir no Sheets, no Excel ou no calendário.") + `<div class="menu">${[["servicos","Serviços (.csv)"],["compras","Compras (.csv)"],["movimentos","Banco (.csv)"],["clientes","Clientes (.csv)"],["agenda","Agenda (.ics)"]].map(([k,l])=>`<button data-export="${k}">${svgI(k==="agenda"?"agenda":"exportar")}${l}</button>`).join("")}${portal?`<button data-portal>${svgI("clientes")}Atualizar área de cliente</button>`:""}</div>`;
+  return header("Exportar","Ficheiros para abrir no Sheets, no Excel ou no calendário.") + `<div class="menu">${[["servicos","Serviços (.csv)"],["compras","Compras (.csv)"],["movimentos","Banco (.csv)"],["clientes","Clientes (.csv)"],["agenda","Agenda (.ics)"]].map(([k,l])=>`<button data-export="${k}">${svgI(k==="agenda"?"agenda":"exportar")}${l}</button>`).join("")}${dl&&dl.native?`<button data-calsel>${svgI("agenda")}Calendário do iPhone para as marcações</button>`:""}${portal?`<button data-portal>${svgI("clientes")}Atualizar área de cliente</button>`:""}</div>`;
 }
 function csv(rows){ return "﻿"+rows.map(r=>r.map(v=>{ if (typeof v==="number") return String(r2(v)).replace(".",","); const s=String(v??""); return /[;"\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }).join(";")).join("\r\n"); }
 async function save(filename,data){ if (!dl){ toast("A descarga não está disponível nesta vista."); return; } try { await dl.save({filename,data}); } catch(e){ if (!e||e.code!=="declined") toast(e&&e.code==="rejected_extension"?"Este tipo de ficheiro não pode ser descarregado aqui.":"Não foi possível gerar o ficheiro."); } }
@@ -1429,6 +1429,7 @@ main.addEventListener("click", async e=>{
   const pl=e.target.closest("[data-plus]"); if (pl){ plusStock(pl.dataset.plus); return; }
   if (e.target.closest("[data-newprod]")){ newProduto(); return; }
   if (e.target.closest("[data-portal]")){ syncAllPortal(); return; }
+  if (e.target.closest("[data-calsel]")){ dl.chooseCalendar().then(n=>{ if (n) toast(`As marcações passam a ir para «${n}».`); }).catch(()=>toast("Não foi possível abrir os calendários.")); return; }
   const t=e.target;
   if (t.id==="save-precos"){
     const cfg=JSON.parse(JSON.stringify(S.cfg||{precos:{}})); cfg.precos=cfg.precos||{};
