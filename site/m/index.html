@@ -41,7 +41,7 @@ h1{margin:0 0 20px;color:var(--ink);font:800 clamp(26px,7vw,32px)/1.15 var(--dis
 <main>
   <a class="brand" href="/"><img src="/img/wolf.png" alt=""><b>MR CLEAN<br>WOLF</b></a>
   <div id="app" aria-live="polite"></div>
-  <p class="note">Alguma dúvida ou precisa de alterar a marcação? Fale connosco pelo <a href="https://wa.me/351296486681">WhatsApp +351 296 486 681</a>.</p>
+  <p class="note">Alguma dúvida ou precisa de alterar a marcação? Escreva-nos para <a href="mailto:mrcleanwolfservices@gmail.com">mrcleanwolfservices@gmail.com</a>.</p>
 </main>
 <script>
 (function(){
@@ -65,7 +65,7 @@ h1{margin:0 0 20px;color:var(--ink);font:800 clamp(26px,7vw,32px)/1.15 var(--dis
   const dia = start.toLocaleDateString("pt-PT", { weekday:"long", day:"numeric", month:"long", year:"numeric" });
   const hora = `${pad(hh)}:${pad(mm)} – ${pad(end.getHours())}:${pad(end.getMinutes())}`;
   const titulo = "Mr Clean Wolf — " + (m.s ? m.s : "Marcação");
-  const notas = [m.s && "Serviços: " + m.s, m.v && "Viatura: " + m.v, "Contacto: +351 296 486 681 (WhatsApp)"].filter(Boolean).join("\n");
+  const notas = [m.s && "Serviços: " + m.s, m.v && "Viatura: " + m.v, "Contacto: mrcleanwolfservices@gmail.com"].filter(Boolean).join("\n");
   const stamp = d => `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
 
   $app.innerHTML = `<p class="eyebrow">Marcação confirmada</p><h1>Até breve!</h1>

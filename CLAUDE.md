@@ -30,9 +30,8 @@ Todas as alterações seguem **[docs/REGRAS-DE-QUALIDADE.md](docs/REGRAS-DE-QUAL
 - Ícones dentro de botões com tamanho definido (antes podiam aparecer desproporcionados).
 
 **29/09/2026 — site público (`site/`)**
-- R2.1/R5.1: uma só ação principal na entrada («Marcar pelo WhatsApp»); o resto em contorno.
+- R2.1/R5.1: uma só ação principal na entrada («Marcar por e-mail» desde 21/10/2026; antes «Marcar pelo WhatsApp»); o resto em contorno.
 - R2.2/R4.2: produtos em 4 grupos; acessórios (21) divididos em 4 subgrupos com título.
-- R4.3: telefone mostrado como `+351 296 486 681`.
 - E1.3: calculadora de diluição com teclado decimal e Enter a fechar o teclado; E3.5 mensagem de erro em linguagem corrente.
 - E2.1/E2.2/E2.4: margens seguras, testado a 375 × 667 e 1280 × 800 sem deslocamento horizontal; toques ≥ 44 px.
 
@@ -46,6 +45,11 @@ Todas as alterações seguem **[docs/REGRAS-DE-QUALIDADE.md](docs/REGRAS-DE-QUAL
 **20/10/2026 — calendário do negócio (app iOS)**
 - R1.4/R2.4: as marcações vão para o calendário escolhido pelo utilizador na lista nativa do iOS (pedido na primeira sincronização e guardado); mudar em «Exportar → Calendário do iPhone para as marcações». Marcações já sincronizadas mudam para o calendário escolhido na sincronização seguinte. Cache `cw-gestao-v19`; compilação iOS 4.
 - R3.2: «Enviar ao cliente por SMS» junto da data, na secção 1 da ficha de serviço: SMS com a data e um link `www.mrcleanwolf.com/m#…` (página `site/m/`) que junta a marcação ao calendário do cliente (calendário do telemóvel ou Google Calendar, com lembrete na véspera). Os dados vão no próprio link; não vai nome, telefone nem preço. E3.5: link incompleto mostra mensagem em linguagem corrente.
+
+**21/10/2026 — número errado retirado (site e `site/m/`)**
+- O número +351 296 486 681 estava errado e foi retirado de todo o site, por decisão do dono: botão do cabeçalho, ações principais, lista de contactos, dados estruturados, página da marcação e notas do calendário. Não voltar a usá-lo.
+- R2.1/R5.1: as duas ações principais passam a «Marcar por e-mail» (mrcleanwolfservices@gmail.com); o site fica sem telefone até o dono indicar outro.
+- E2.2: verificado a 375 × 667 e 1280 × 800, sem deslocamento horizontal nem erros na consola.
 
 **20/10/2026 — permissões explícitas na base de dados (aviso Supabase de 30/10/2026)**
 - E4.5: migração de base `supabase/migrations/20260926000000_baseline.sql` com o esquema de produção (7 tabelas, funções, RLS, 13 regras de acesso, `GRANT` explícitos, fotografias e tempo real); permissões comparadas com produção e coincidentes. Ainda por registar no histórico de produção (`supabase migration repair --status applied 20260926000000`, ver `supabase/migrations/README.md`).
