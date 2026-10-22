@@ -61,7 +61,7 @@ Todas as alterações seguem **[docs/REGRAS-DE-QUALIDADE.md](docs/REGRAS-DE-QUAL
 - E4.5: migração de base registada no histórico de produção (`supabase migration repair`), sem executar SQL.
 - E4.5: migração `20261022193000_pg_net_esquema_extensions.sql` (aviso «Extension in Public»): `pg_net` passa para o esquema `extensions`, como indica a Supabase (desativar e reativar; não muda de esquema com `ALTER`). Fila vazia e sem dependências verificadas; a tarefa `mcw-social-sync` usa `net.http_post` e não muda. Aplicada a 22/10/2026 com `supabase db push --linked`: `pg_net` 0.20.4 em `extensions`, permissões do esquema `net` iguais às anteriores, tarefa ativa e aviso de segurança resolvido.
 - Proteção contra palavras-passe divulgadas: só existe no plano Pro da Supabase e as apps entram apenas com código de uso único por e-mail (`signInWithOtp`/`verifyOtp`), sem palavras-passe. Aviso aceite como não aplicável; rever se o plano mudar ou se forem usadas palavras-passe.
-- E5.2: `privacidade.html` com e-mail de contacto e Cloudflare na lista de subcontratantes; data atualizada.
+- E5.2: `privacidade.html` com e-mail de contacto, Cloudflare e Resend (envio dos códigos de acesso, SMTP próprio no Supabase) na lista de subcontratantes; data atualizada.
 - E5.2: `PrivacyInfo.xcprivacy` confirmado dentro da app compilada (*Copy Bundle Resources*).
 - README e `ios-app/README.md` com os endereços reais, o calendário escolhido pelo utilizador e a compilação de verificação.
 
