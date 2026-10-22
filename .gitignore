@@ -3,3 +3,4 @@ dados/
 .DS_Store
 ios-app/node_modules/
 ios-app/www/
+supabase/.temp/

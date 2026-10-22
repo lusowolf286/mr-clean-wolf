@@ -52,7 +52,7 @@ Todas as alterações seguem **[docs/REGRAS-DE-QUALIDADE.md](docs/REGRAS-DE-QUAL
 - E2.2: verificado a 375 × 667 e 1280 × 800, sem deslocamento horizontal nem erros na consola.
 
 **20/10/2026 — permissões explícitas na base de dados (aviso Supabase de 30/10/2026)**
-- E4.5: migração de base `supabase/migrations/20260926000000_baseline.sql` com o esquema de produção (7 tabelas, funções, RLS, 13 regras de acesso, `GRANT` explícitos, fotografias e tempo real); permissões comparadas com produção e coincidentes. Ainda por registar no histórico de produção (`supabase migration repair --status applied 20260926000000`, ver `supabase/migrations/README.md`).
+- E4.5: migração de base `supabase/migrations/20260926000000_baseline.sql` com o esquema de produção (7 tabelas, funções, RLS, 13 regras de acesso, `GRANT` explícitos, fotografias e tempo real); permissões comparadas com produção e coincidentes. Registada no histórico de produção a 22/10/2026 com `supabase migration repair --status applied 20260926000000` (só o registo; o SQL não foi executado e o esquema não mudou).
 - E4.5: `otimizacao_rls.sql` passa também a migração versionada (`20260929033109`), igual à registada em produção.
 - E4.5: modelo `supabase/modelos/nova_tabela.sql` para tabelas novas.
 - Produção não foi alterada: as tabelas existentes mantêm as permissões e o projeto já não dava permissões automáticas a tabelas novas criadas pelo `postgres`.

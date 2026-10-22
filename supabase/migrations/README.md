@@ -4,7 +4,7 @@ Esta pasta é a fonte de verdade do esquema da base de dados. Um projeto novo, u
 
 | Versão | Ficheiro | Estado em produção |
 |---|---|---|
-| 20260926000000 | `baseline.sql` | Esquema já existente; **ainda não registado no histórico** (ver abaixo) |
+| 20260926000000 | `baseline.sql` | Esquema já existente; registada no histórico a 22/10/2026 (sem executar) |
 | 20260929033109 | `otimizacao_rls_auth_initplan.sql` | Aplicada a 29/09/2026 |
 
 ## Regras (E4.5)
@@ -15,7 +15,7 @@ Esta pasta é a fonte de verdade do esquema da base de dados. Um projeto novo, u
 
 ## Registar a migração de base no histórico de produção
 
-O esquema de produção já existe, por isso a migração de base **não deve ser executada** em produção; só registada. Fazer uma única vez, quando se começar a usar a CLI:
+O esquema de produção já existe, por isso a migração de base **não deve ser executada** em produção; só registada. Feito a 22/10/2026 (não repetir):
 
 ```sh
 supabase link --project-ref nsivezaolaugdrwojfun
