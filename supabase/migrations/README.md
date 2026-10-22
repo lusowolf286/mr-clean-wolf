@@ -6,6 +6,7 @@ Esta pasta é a fonte de verdade do esquema da base de dados. Um projeto novo, u
 |---|---|---|
 | 20260926000000 | `baseline.sql` | Esquema já existente; registada no histórico a 22/10/2026 (sem executar) |
 | 20260929033109 | `otimizacao_rls_auth_initplan.sql` | Aplicada a 29/09/2026 |
+| 20261022193000 | `pg_net_esquema_extensions.sql` | Aplicada a 22/10/2026 |
 
 ## Regras (E4.5)
 

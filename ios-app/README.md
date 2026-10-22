@@ -3,7 +3,7 @@
 App nativa para iPhone e iPad com a app de gestão. Os dados continuam no Supabase, sincronizados com a versão web.
 
 Diferenças em relação à versão web:
-- **Agenda → calendário**: as marcações são gravadas diretamente no calendário predefinido do iPhone; voltar a exportar atualiza as mesmas marcações, sem duplicar.
+- **Agenda → calendário**: as marcações são gravadas no calendário do iPhone escolhido pelo utilizador (pedido na primeira sincronização; mudar em **Exportar → Calendário do iPhone para as marcações**); voltar a exportar atualiza as mesmas marcações, sem duplicar.
 - **PDF e CSV**: abrem a folha de partilha do iOS (Mail, WhatsApp, Ficheiros, AirDrop).
 - Bibliotecas embutidas: a app abre mesmo sem rede.
 
@@ -31,7 +31,7 @@ Para o iPad, repita os passos 6 a 9 com o iPad ligado.
 
 ## Atualizar a app (para quem mantém o código)
 
-A app embute uma cópia da pasta `gestao/`. Depois de alterar a app web:
+A app embute uma cópia da pasta `gestao/`. É preciso o Node.js (`brew install node`). Depois de alterar a app web:
 
 ```
 cd ios-app
@@ -39,4 +39,11 @@ npm install
 npm run sync
 ```
 
-Isto recria `www/` e copia-a para `ios/App/App/public`. Depois, no Xcode, **▶** para reinstalar.
+Isto recria `www/` e copia-a para `ios/App/App/public`. Repor os ficheiros de configuração do Capacitor que a cópia altere (ver o *commit* `c0c9fde`), aumentar `CURRENT_PROJECT_VERSION` e, no Xcode, **▶** para reinstalar.
+
+Para confirmar só que compila, sem instalar:
+
+```
+cd ios-app/ios/App
+xcodebuild -project App.xcodeproj -scheme App -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+```

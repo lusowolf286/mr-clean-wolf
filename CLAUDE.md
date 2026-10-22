@@ -57,8 +57,16 @@ Todas as alterações seguem **[docs/REGRAS-DE-QUALIDADE.md](docs/REGRAS-DE-QUAL
 - E4.5: modelo `supabase/modelos/nova_tabela.sql` para tabelas novas.
 - Produção não foi alterada: as tabelas existentes mantêm as permissões e o projeto já não dava permissões automáticas a tabelas novas criadas pelo `postgres`.
 
+**22/10/2026 — passagem para o Claude Code (pendentes da secção 6 de `MIGRACAO-mr-clean-wolf.md`)**
+- E4.5: migração de base registada no histórico de produção (`supabase migration repair`), sem executar SQL.
+- E4.5: migração `20261022193000_pg_net_esquema_extensions.sql` (aviso «Extension in Public»): `pg_net` passa para o esquema `extensions`, como indica a Supabase (desativar e reativar; não muda de esquema com `ALTER`). Fila vazia e sem dependências verificadas; a tarefa `mcw-social-sync` usa `net.http_post` e não muda. Aplicada a 22/10/2026 com `supabase db push --linked`: `pg_net` 0.20.4 em `extensions`, permissões do esquema `net` iguais às anteriores, tarefa ativa e aviso de segurança resolvido.
+- Proteção contra palavras-passe divulgadas: só existe no plano Pro da Supabase e as apps entram apenas com código de uso único por e-mail (`signInWithOtp`/`verifyOtp`), sem palavras-passe. Aviso aceite como não aplicável; rever se o plano mudar ou se forem usadas palavras-passe.
+- E5.2: `privacidade.html` com e-mail de contacto e Cloudflare na lista de subcontratantes; data atualizada.
+- E5.2: `PrivacyInfo.xcprivacy` confirmado dentro da app compilada (*Copy Bundle Resources*).
+- README e `ios-app/README.md` com os endereços reais, o calendário escolhido pelo utilizador e a compilação de verificação.
+
 ## 4. Última auditoria (E4/E5) — 29/09/2026
-- 20/10/2026, avisos de segurança do Supabase: além dos intencionais (funções *SECURITY DEFINER* do link de dados e `is_admin`; `social_privado` sem regras), há dois pendentes de decisão — extensão `pg_net` no esquema `public` e proteção contra palavras-passe divulgadas desligada (Auth).
+- 20/10/2026, avisos de segurança do Supabase: além dos intencionais (funções *SECURITY DEFINER* do link de dados e `is_admin`; `social_privado` sem regras), havia dois pendentes de decisão, resolvidos a 22/10/2026 — extensão `pg_net` movida para `extensions`; proteção contra palavras-passe divulgadas aceite como não aplicável (plano gratuito, entrada só por código).
 - Supabase (conector): RLS ativo em todas as tabelas; nada legível sem sessão; um cliente só vê os seus dados (testado). Avisos de funções *SECURITY DEFINER* e de `social_privado` sem regras são intencionais. 5 regras de acesso otimizadas com `(select auth.jwt())` — `supabase/otimizacao_rls.sql`, aplicado a 29/09/2026.
 - E4: sem segredos no código. `config.js` tem apenas a chave *publishable* (acesso controlado por RLS); tokens de Meta, YouTube e TikTok e a chave *secret* estão nos segredos da *Edge Function* `social-sync`.
 - E5: permissões com justificação em português (câmara, fotografias, calendário, Face ID); política de privacidade acessível. Pendentes: a área de cliente cria contas — se um dia for publicada na App Store, tem de permitir apagar a conta dentro da app (E5.4); confirmar no Xcode que `PrivacyInfo.xcprivacy` aparece em *Build Phases → Copy Bundle Resources*.
