@@ -126,6 +126,8 @@ async function setDoc(path, data){
   localRefresh(path);
 }
 const db = {
+  /* volta a ler tudo o que está aberto (puxar para atualizar), mesmo sem aviso do tempo real */
+  refreshAll(){ return Promise.all([...listeners].map(l => l.refresh())); },
   collection(c){
     return { onSnapshot(cb, err){
       const l = { matches: p => p.startsWith(c + "/"), refresh: async () => {
@@ -262,6 +264,15 @@ const social = {
   sync(){ return social.call("sync", { forcar:true }); },
   tiktokUrl(){ return social.call("tiktok_url"); }
 };
+/* lançamentos novos da folha raiz (Google Sheets) → compras e banco; leitura feita na Edge Function sheet-sync (E4) */
+const folha = {
+  async sync(){
+    const { data, error } = await sb.functions.invoke("sheet-sync", { body:{ acao:"sync" } });
+    if (error){ let m = error.message; try { const j = await error.context.json(); if (j && j.erro) m = j.erro; } catch(e){} throw new Error(m); }
+    if (data && data.erro && data.configurado !== false) throw new Error(data.erro);
+    return data;
+  }
+};
 const agenda = {
   async get(){ const { data, error } = await sb.from("agenda").select("dados").eq("id","config").maybeSingle(); if (error) throw error; return data ? data.dados : null; },
   async set(dados){ const { error } = await sb.from("agenda").upsert({ id:"config", dados, updated_at: new Date().toISOString() }); if (error) throw error; }
@@ -279,6 +290,7 @@ window.claude = {
     if (name === "agenda") return s === "offline" ? null : agenda;
     if (name === "atualizacoes") return s === "offline" ? null : atualizacoes;
     if (name === "social") return s === "offline" ? null : social;
+    if (name === "folha") return s === "offline" ? null : folha;
     return null;
   }
 };

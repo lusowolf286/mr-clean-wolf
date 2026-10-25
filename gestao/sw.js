@@ -1,5 +1,5 @@
 /* Mr Clean Wolf — funcionamento sem rede (gestao) */
-const V = "cw-gestao-v19";
+const V = "cw-gestao-v20";
 const SHELL = [
   "./",
   "./index.html",
