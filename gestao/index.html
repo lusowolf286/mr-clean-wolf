@@ -984,7 +984,7 @@ function vCompras(){
   const tot={}; for (const r of rowsY){ const t=tipoOf(r)||"sem"; tot[t]=(tot[t]||0)+(+r.val||0); }
   const tl = t => t==="sem"?"Por classificar":(TIPOS_COMPRA.find(x=>x[0]===t)||[0,t])[1];
   const row = r => { const d=r.d||""; return `<button class="row" data-edit="compras:${esc(r._id)}"><span class="r-date"><b>${d.slice(8,10)}</b>${MES3[+d.slice(5,7)-1]||""}</span>
-    <span><span class="r-title"><span class="nm">${esc(r.loja||"—")}</span></span><span class="r-sub"><span class="chip">${esc(tl(tipoOf(r)||"sem"))}</span>${(r.itens||[]).length?esc(itensResumo(r.itens)):""}${r.nota?esc(r.nota):""}${(r.fotos||[]).length?`<span class="chip">📎</span>`.replace("📎","doc"):""}</span></span>
+    <span><span class="r-title"><span class="nm">${esc(r.loja||"—")}</span></span><span class="r-sub"><span class="chip">${esc(tl(tipoOf(r)||"sem"))}</span>${(r.itens||[]).length?esc(itensResumo(r.itens)):""}${r.nota?esc(r.nota):""}${(r.fotos||[]).length?`<span class="chip">📎</span>`.replace("📎","doc"):""}${pdfUrl(r)?`<span class="chip">PDF</span>`:""}</span></span>
     <span class="r-amt"><b>${eur(r.val)}</b></span></button>`; };
   return header("Compras", `${rowsY.length} faturas · ${eur(rowsY.reduce((a,r)=>a+(+r.val||0),0))}`, yearSel())
     + `<div class="kpis" style="margin-bottom:12px">${["consumivel","equipamento","cliente","sem"].filter(t=>tot[t]).map(t=>`<div class="kpi"><span class="lbl">${tl(t)}</span><span class="v">${eur0(tot[t])}</span></div>`).join("")}</div>`
@@ -1398,6 +1398,8 @@ function editCliente(id){
 /* ---------- compra ---------- */
 /* resumo dos produtos de uma compra («2× Shampoo, 1× Microfibras…») */
 function itensResumo(it){ const l=(it||[]).filter(i=>i&&i.nome); return l.slice(0,3).map(i=>`${fmtIn(+i.q||1)}× ${i.nome}`).join(", ")+(l.length>3?"…":"")+" "; }
+// R3.4: fatura em PDF (guardada no Google Drive pela tarefa das faturas por e-mail) junto da fotografia da fatura; E4: só links do Google Drive
+function pdfUrl(r){ const u=r&&r.fatura_pdf; return typeof u==="string"&&/^https:\/\/drive\.google\.com\//.test(u)?u:""; }
 function editCompra(id){
   const ex=id?S.compras[id]:null; let fotos=[...((ex&&ex.fotos)||[])];
   // R4.1: formulário em 3 secções numeradas; R3: produtos e montante juntos
@@ -1414,6 +1416,7 @@ function editCompra(id){
     <label class="fld"><span class="lbl">Montante €</span><input id="c-val" inputmode="decimal" enterkeyhint="done" value="${ex?fmtIn(ex.val):""}" placeholder="0,00"></label>
     <div class="dif" id="c-dif" hidden></div>`)
     + sec(3,"Notas e fatura",`<label class="fld"><span class="lbl">Nota</span><input id="c-nota" value="${esc(ex&&ex.nota||"")}" placeholder="N.º da fatura, observações…" enterkeyhint="done"></label>
+    ${pdfUrl(ex)?`<div class="sec-a"><a class="btn sm" href="${esc(pdfUrl(ex))}" target="_blank" rel="noopener">Ver fatura (PDF)</a></div>`:""}
     <div class="fld"><span class="lbl">Fotografia da fatura</span><div class="photos" id="c-ph">${phHtml()}</div></div>
     ${ex?"":`<label class="chk"><input type="checkbox" id="c-bank" checked> Lançar no banco como “Compras”</label>`}`);
   openSheet(ex?"Compra":"Nova compra", body, `${delBtn(!!ex)}<span class="sp"></span><button class="btn" type="button" id="sh-cancel">Cancelar</button><button class="btn pri" type="button" id="sh-save">Guardar</button>`, close=>{
