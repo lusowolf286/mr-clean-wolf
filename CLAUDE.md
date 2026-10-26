@@ -71,6 +71,12 @@ Todas as alterações seguem **[docs/REGRAS-DE-QUALIDADE.md](docs/REGRAS-DE-QUAL
 - R4.1/R3: compra em 3 secções numeradas; «Produtos e montante» com uma linha por produto (Qtd. · Produto · Preço, total da linha quando a quantidade não é 1), montante = soma enquanto não for alterado à mão e aviso da diferença; E1.3: Enter avança e cria a linha seguinte. Lista mostra os produtos e a pesquisa encontra-os; CSV com a coluna «Produtos». Cache `cw-gestao-v20`; compilação iOS 5.
 - 25/10/2026: conta de serviço `mcw-folha@mr-clean-wolf.iam.gserviceaccount.com` (Leitor da folha) e segredo `GSHEET_SA_JSON` configurados; primeira leitura feita no iPhone (compilação 5): 0 compras e 2 movimentos de 24/10/2026 (−222,11 € e 500 €), sem duplicados. Pendente, a pedido do dono: lançamento automático das faturas que chegam a hello@mrcleanwolf.com.
 
+**26/10/2026 — faturas por e-mail**
+- Grupo Google Workspace «Faturas Mr Clean Wolf» (faturas@apexwolfventures.com; também **faturas@mrcleanwolf.com**, domínio alias): externos podem enviar, sem moderação nem retenção por spam; membro único paulorenatosimasamaral@gmail.com.
+- Tarefa agendada «Lançar faturas MCW do e-mail» (de hora a hora, na nuvem): lê as mensagens enviadas para essa morada (Gmail só leitura), cria a compra com os produtos linha a linha (`origem:"email"`) e o movimento «Compras» no banco, sem duplicar o que já exista (mesma data e valor a menos de 1 €; nesse caso só junta os produtos). Mensagens tratadas ficam em `config/faturas_email`. Faturas que não se leiam com segurança ficam «a rever».
+- Primeira fatura tratada à mão: A Loja do Detalhe, encomenda FCPJPXPUJ, 24/10/2026, 222,11 € (6 produtos + portes) juntos à compra existente.
+- Ainda não: o PDF da fatura não é guardado na app (as fotografias só aceitam imagens).
+
 ## 4. Última auditoria (E4/E5) — 29/09/2026
 - 20/10/2026, avisos de segurança do Supabase: além dos intencionais (funções *SECURITY DEFINER* do link de dados e `is_admin`; `social_privado` sem regras), havia dois pendentes de decisão, resolvidos a 22/10/2026 — extensão `pg_net` movida para `extensions`; proteção contra palavras-passe divulgadas aceite como não aplicável (plano gratuito, entrada só por código).
 - Supabase (conector): RLS ativo em todas as tabelas; nada legível sem sessão; um cliente só vê os seus dados (testado). Avisos de funções *SECURITY DEFINER* e de `social_privado` sem regras são intencionais. 5 regras de acesso otimizadas com `(select auth.jwt())` — `supabase/otimizacao_rls.sql`, aplicado a 29/09/2026.
