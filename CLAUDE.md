@@ -80,7 +80,7 @@ Todas as alterações seguem **[docs/REGRAS-DE-QUALIDADE.md](docs/REGRAS-DE-QUAL
 
 **31/10/2026 — correções da revisão cruzada (AI Hub, AI-004/AI-004-R)**
 - MCW-04: gravações atómicas por documento anual (`mutate` em `shared/supa.js`, controlo otimista por `updated_at`, até 6 tentativas). A app e a `sheet-sync` deixam de sobrescrever alterações feitas entretanto noutro dispositivo; a `sheet-sync` só acrescenta registos. E3.5: conflito persistente dá mensagem clara e «Tentar de novo».
-- MCW-01/C-01: serviços gravados com `cliId` (identificador da ficha); a área de cliente e a ficha usam-no, com o nome como alternativa nos registos antigos. Nome de cliente repetido é recusado ao gravar. Mudar o nome do cliente atualiza os serviços.
+- MCW-01/C-01: o NIF identifica o cliente; o nome pode repetir-se. NIF repetido é recusado ao gravar a ficha. Serviços gravados com `cliId` (identificador da ficha); com nome repetido, a ficha do serviço pede a escolha pelo NIF (R3: logo abaixo do nome). Serviços antigos sem `cliId` são ligados automaticamente quando o nome é de um só cliente; os ambíguos não aparecem em nenhuma área de cliente até serem escolhidos. Estatísticas e painel contam por ficha; homónimos mostram o NIF. Mudar o nome do cliente atualiza os serviços.
 - MCW-02: apagar um cliente retira também o resumo da área de cliente (`portal`).
 - MCW-03: sem sessão e sem rede, a gestão não abre a cópia local (E3.2: «Tentar de novo»); a cópia local é apagada ao terminar sessão.
 - MCW-05/C-03: remover uma fotografia só a apaga depois de gravar; fotografias carregadas numa edição cancelada são apagadas ao fechar; apagar o serviço ou a compra apaga as suas fotografias.

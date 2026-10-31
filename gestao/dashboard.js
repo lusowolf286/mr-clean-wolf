@@ -35,8 +35,9 @@ function metrics(from, to){
   const inR = done.filter(r => r.d >= from && r.d <= to);
   let fat = 0, custo = 0, mo = 0, horas = 0, xs = 0;
   for (const r of inR){ const k = h.recCost(r.sv, r.cat); fat += +r.fat || 0; custo += k.custo; mo += k.mo; horas += k.horas; xs += h.extrasSum(r); }
-  const first = {}; for (const r of done) if (!first[r.cli] || r.d < first[r.cli]) first[r.cli] = r.d;
-  const ativos = [...new Set(inR.map(r => r.cli))];
+  // MCW-01: clientes contados pela ficha (cliId), não pelo nome, que pode repetir-se
+  const first = {}; for (const r of done){ const k = h.cliKey(r); if (!first[k] || r.d < first[k]) first[k] = r.d; }
+  const ativos = [...new Set(inR.map(h.cliKey))];
   const novos = ativos.filter(c => first[c] >= from);
   const regressam = ativos.filter(c => first[c] < from);
   return { n: inR.length, fat, rl: fat - xs - custo - mo, horas, eh: horas ? (fat - xs - custo) / horas : 0,
@@ -56,7 +57,7 @@ function occupancy(){
 }
 function clientHealth(){
   const h = D(), done = h.list("servicos").filter(r => h.est(r) === "entregue").sort((a,b) => a.d.localeCompare(b.d));
-  const by = {}; for (const r of done) (by[r.cli] = by[r.cli] || []).push(r);
+  const by = {}; for (const r of done){ const k = h.cliKey(r); (by[k] = by[k] || []).push(r); }
   const gaps = [], risco = [], t = ds(new Date());
   let startedMaint = 0, upsold = 0;
   for (const [cli, rs] of Object.entries(by)){
@@ -249,7 +250,7 @@ function view(){
   const ms = monthly(), mx = mix(cur.rows).slice(0, 8);
   const wd = [0,0,0,0,0,0,0]; for (const r of cur.rows) wd[new Date(r.d + "T12:00:00").getDay()]++;
   const WD = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"], order = [1,2,3,4,5,6,0];
-  const top = Object.entries(cur.rows.reduce((a,r) => (a[r.cli] = (a[r.cli]||0) + (+r.fat||0), a), {})).sort((a,b) => b[1]-a[1]).slice(0,5);
+  const top = Object.entries(cur.rows.reduce((a,r) => { const k = h.cliKey(r); a[k] = (a[k]||0) + (+r.fat||0); return a; }, {})).sort((a,b) => b[1]-a[1]).slice(0,5);
   const pend = h.list("servicos").filter(r => h.fatEst(r) === "por_emitir"), pendV = pend.reduce((a,r) => a + (+r.fat||0), 0);
   const P = (h.S().custos && h.S().custos.produtos) || {}; let stockV = 0;
   for (const [id,p] of Object.entries(P)){ if (p.stockDe || !p.contagem) continue; const e = h.stockEstimate(id); if (e) stockV += e.left * (+p.preco||0); }
@@ -285,8 +286,8 @@ function view(){
   <div class="grid2">
     <section class="card"><div class="card-h"><span class="lbl">Receita por serviço</span><span class="note">no período</span></div>${mx.length ? hbars(mx, v => h.eur0(v)) : `<p class="note">Sem serviços no período.</p>`}</section>
     <section class="card"><div class="card-h"><span class="lbl">Dias mais procurados</span><span class="note">serviços no período</span></div>${hbars(order.map(i => ({ l: WD[i], v: wd[i] })), v => String(v))}</section>
-    <section class="card"><div class="card-h"><span class="lbl">Melhores clientes</span><span class="note">no período</span></div>${top.length ? top.map(([c,v]) => `<button class="row" type="button" data-dcli="${h.esc(c)}" style="grid-template-columns:minmax(0,1fr) auto"><span class="nm">${h.esc(c)}</span><span class="r-amt"><b>${h.eur0(v)}</b></span></button>`).join("") : `<p class="note">Sem serviços no período.</p>`}</section>
-    <section class="card"><div class="card-h"><span class="lbl">Clientes a recuperar</span><span class="note">2+ serviços, sem visita há 90+ dias</span></div>${ch.risco.length ? ch.risco.slice(0,6).map(r => `<button class="row" type="button" data-dcli="${h.esc(r.cli)}" style="grid-template-columns:minmax(0,1fr) auto"><span><span class="nm">${h.esc(r.cli)}</span><span class="r-sub">${r.n} serviços · último há ${r.since} dias</span></span><span class="r-amt"><b>${h.eur0(r.fat)}</b></span></button>`).join("") : `<p class="note">Nenhum cliente habitual está afastado.</p>`}</section>
+    <section class="card"><div class="card-h"><span class="lbl">Melhores clientes</span><span class="note">no período</span></div>${top.length ? top.map(([c,v]) => `<button class="row" type="button" data-dcli="${h.esc(c)}" style="grid-template-columns:minmax(0,1fr) auto"><span class="nm">${h.esc(h.cliNome(c))}</span><span class="r-amt"><b>${h.eur0(v)}</b></span></button>`).join("") : `<p class="note">Sem serviços no período.</p>`}</section>
+    <section class="card"><div class="card-h"><span class="lbl">Clientes a recuperar</span><span class="note">2+ serviços, sem visita há 90+ dias</span></div>${ch.risco.length ? ch.risco.slice(0,6).map(r => `<button class="row" type="button" data-dcli="${h.esc(r.cli)}" style="grid-template-columns:minmax(0,1fr) auto"><span><span class="nm">${h.esc(h.cliNome(r.cli))}</span><span class="r-sub">${r.n} serviços · último há ${r.since} dias</span></span><span class="r-amt"><b>${h.eur0(r.fat)}</b></span></button>`).join("") : `<p class="note">Nenhum cliente habitual está afastado.</p>`}</section>
   </div>
   ${h.pedidosApi() ? `<h2 class="dsh">Marcações online</h2>${ped}` : ""}
   ${socialSection()}`;
@@ -313,7 +314,7 @@ function click(e){
   const s = e.target.closest("[data-soc]"); if (s){ editSocial(s.dataset.soc); return true; }
   if (e.target.closest("[data-socsync]")){ socSync(); return true; }
   if (e.target.closest("[data-soctt]")){ ligarTikTok(); return true; }
-  const c = e.target.closest("[data-dcli]"); if (c){ const k = D().clientByName(c.dataset.dcli); if (k) D().openCliente(k._id); return true; }
+  const c = e.target.closest("[data-dcli]"); if (c){ const k = D().clientByKey(c.dataset.dcli); if (k) D().openCliente(k._id); return true; }
   return false;
 }
 window.CWDash = { view, wire, click, refresh(){ PH = null; } };
