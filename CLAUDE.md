@@ -78,6 +78,20 @@ Todas as alterações seguem **[docs/REGRAS-DE-QUALIDADE.md](docs/REGRAS-DE-QUAL
 - Anexos PDF (26/10/2026): a tarefa lê-os pelo Zapier (Gmail «Get Attachment by Filename» → Google Drive «Upload File» para a pasta «Faturas MCW», id `1BYjGqK418Ix0tV6yudQdFkAow0aWeJ-C`); uma segunda cópia convertida em documento Google (OCR) dá o texto e vai para o lixo depois de lida. O link do PDF fica no campo `fatura_pdf` da compra. Testado com FR A/68775.
 - R3.4/E4: na ficha da compra, secção 3, botão «Ver fatura (PDF)» quando há `fatura_pdf` (só links `https://drive.google.com/`; abre no navegador); na lista, etiqueta «PDF». Cache `cw-gestao-v21`; compilação iOS 6.
 
+**31/10/2026 — correções da revisão cruzada (AI Hub, AI-004/AI-004-R)**
+- MCW-04: gravações atómicas por documento anual (`mutate` em `shared/supa.js`, controlo otimista por `updated_at`, até 6 tentativas). A app e a `sheet-sync` deixam de sobrescrever alterações feitas entretanto noutro dispositivo; a `sheet-sync` só acrescenta registos. E3.5: conflito persistente dá mensagem clara e «Tentar de novo».
+- MCW-01/C-01: serviços gravados com `cliId` (identificador da ficha); a área de cliente e a ficha usam-no, com o nome como alternativa nos registos antigos. Nome de cliente repetido é recusado ao gravar. Mudar o nome do cliente atualiza os serviços.
+- MCW-02: apagar um cliente retira também o resumo da área de cliente (`portal`).
+- MCW-03: sem sessão e sem rede, a gestão não abre a cópia local (E3.2: «Tentar de novo»); a cópia local é apagada ao terminar sessão.
+- MCW-05/C-03: remover uma fotografia só a apaga depois de gravar; fotografias carregadas numa edição cancelada são apagadas ao fechar; apagar o serviço ou a compra apaga as suas fotografias.
+- MCW-06: editar ou apagar uma compra (ou um serviço pago) atualiza ou apaga o movimento do banco ligado (`ref`), se este não tiver sido alterado à mão; caso contrário, aviso para rever.
+- MCW-07/MCW-08/C-02 (`sheet-sync`): linhas vazias atrás da marca de água ficam pendentes e voltam a ser lidas; só é duplicado o mesmo valor ao cêntimo na mesma data e loja/conta (nomes de loja contidos um no outro contam como a mesma); valores próximos ou mesmo valor noutra loja entram com «A rever» (R5.1: etiqueta na lista; desaparece ao gravar a ficha).
+- MCW-09/E3.3: «Atualizar» só diz «Atualizado» quando os dados vieram do servidor; caso contrário, «a mostrar a última informação guardada».
+- MCW-10: exportação CSV neutraliza texto começado por `=`, `+`, `-`, `@`.
+- E4.5/MCW-04: migração `20261031230000_docs_updated_at_automatico.sql` — gatilho que atualiza `docs.updated_at` em cada gravação, para o controlo otimista detetar também escritores externos. Sem tabelas novas nem alterações de permissões.
+- Cache `cw-gestao-v22`; compilação iOS 7. Depois da integração em `main`: aplicar a migração (`supabase db push --linked`) e publicar de novo a `sheet-sync` (`supabase functions deploy sheet-sync`).
+- Pendente fora do repositório: a tarefa agendada «Lançar faturas MCW do e-mail» ainda considera duplicado um valor a menos de 1 € (C-02) e grava sem controlo de versão (MCW-04).
+
 ## 4. Última auditoria (E4/E5) — 29/09/2026
 - 20/10/2026, avisos de segurança do Supabase: além dos intencionais (funções *SECURITY DEFINER* do link de dados e `is_admin`; `social_privado` sem regras), havia dois pendentes de decisão, resolvidos a 22/10/2026 — extensão `pg_net` movida para `extensions`; proteção contra palavras-passe divulgadas aceite como não aplicável (plano gratuito, entrada só por código).
 - 31/10/2026 (E4): política de palavras-passe reforçada por precaução (mínimo 8 caracteres, letras e algarismos — *Authentication → Email*); não afeta a entrada por código. Tarefa agendada semanal «Vigilância de fugas de palavras-passe» (segundas, 08:52): alertas de fuga no Gmail, abusos de `/otp`, `/verify`, `/token` nos registos de autenticação e avisos de segurança novos.

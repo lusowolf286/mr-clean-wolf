@@ -10,9 +10,14 @@
 //   • cada bloco (Compras; Banco → conta Principal, colunas A:D; Banco → conta Avença, colunas F:I) tem uma marca de água:
 //     o número de linhas já tratadas, guardado em config/sheet_sync;
 //   • na primeira vez, a marca de água é a última linha que já existe na app (as anteriores vieram do ficheiro inicial);
-//   • linhas novas só entram se não houver na app um registo igual (mesma data, mesma conta/loja, valor a menos de 1 €)
-//     — evita duplicar o que foi lançado à mão nos dois lados (ex.: compra criada na app com «Lançar no banco»);
-//   • linhas sem data ou sem valor são ignoradas e contadas; voltam a ser lidas até estarem completas.
+//   • linhas novas só entram se não houver na app um registo igual: mesma data, mesmo valor (ao cêntimo) e mesma conta,
+//     ou, nas compras, mesma loja (nomes que contêm um ao outro contam como a mesma loja) — MCW-08/C-02;
+//   • valores próximos (diferença inferior a 1 €) ou valor igual noutra loja no mesmo dia já não são tratados como
+//     duplicado: o registo entra marcado com «rever: true» e é contado em «aRever»;
+//   • linhas sem data ou sem valor são ignoradas e contadas; voltam a ser lidas até estarem completas;
+//   • linhas vazias que ficam para trás da marca de água são guardadas como pendentes e voltam a ser lidas (MCW-07);
+//   • a gravação só acrescenta registos e é atómica por documento (controlo otimista por updated_at): o que a app
+//     gravar entretanto não é sobrescrito (MCW-04).
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const env = (k: string) => (Deno.env.get(k) || "").trim();
@@ -91,7 +96,7 @@ const vazia = (r: unknown[]) => !r || r.every((c) => String(c ?? "").trim() === 
 /* ---------- base de dados ---------- */
 type Rec = Record<string, unknown> & { d: string; val: number };
 async function load(coll: string) {
-  const { data, error } = await SB.from("docs").select("path,data").like("path", coll + "/%");
+  const { data, error } = await SB.from("docs").select("path,data").like("path", coll + "/%");   // só para comparar; a gravação relê cada documento
   if (error) throw error;
   const docs = new Map<string, { ano: string; items: Record<string, Rec> }>();
   for (const r of data || []) docs.set(r.path, { ano: r.path.split("/")[1], items: { ...(r.data?.items || {}) } });
@@ -110,6 +115,26 @@ async function isAdmin(req: Request) {
   return (a || []).some((x: { email: string }) => String(x.email).toLowerCase() === email);
 }
 
+async function acrescentar(path: string, itens: Record<string, Rec>) {
+  for (let tent = 0; tent < 6; tent++) {
+    const { data: row, error } = await SB.from("docs").select("data,updated_at").eq("path", path).maybeSingle();
+    if (error) throw error;
+    const agora = new Date().toISOString();
+    if (row) {
+      const data = { ...(row.data || {}), items: { ...(row.data?.items || {}), ...itens } };
+      const { data: upd, error: e2 } = await SB.from("docs").update({ data, updated_at: agora }).eq("path", path).eq("updated_at", row.updated_at).select("path");
+      if (e2) throw e2;
+      if (upd && upd.length) return;
+    } else {
+      const { error: e3 } = await SB.from("docs").insert({ path, data: { ano: path.split("/")[1], items: itens }, updated_at: agora });
+      if (!e3) return;
+      if (e3.code !== "23505") throw e3;
+    }
+    await new Promise((r) => setTimeout(r, 150 * (tent + 1)));
+  }
+  throw new Error(`O documento ${path} foi alterado várias vezes durante a leitura da folha. Tente de novo.`);
+}
+
 async function sync() {
   const saRaw = env("GSHEET_SA_JSON");
   if (!saRaw) return { configurado: false, erro: "A leitura da folha ainda não está configurada (falta o segredo GSHEET_SA_JSON)." };
@@ -117,26 +142,46 @@ async function sync() {
   const folha = await readSheet(await googleToken(sa));
 
   const { data: st } = await SB.from("docs").select("data").eq("path", STATE).maybeSingle();
-  const estado = (st?.data || {}) as { wm?: Record<string, number> };
+  const estado = (st?.data || {}) as { wm?: Record<string, number>; pend?: Record<string, number[]> };
   const wm: Record<string, number> = { ...(estado.wm || {}) };
+  const pend: Record<string, number[]> = { ...(estado.pend || {}) };   // MCW-07: linhas vazias atrás da marca de água
 
   const compras = await load("compras"), movs = await load("movimentos");
   const exC = todos(compras), exM = todos(movs);
   const usadosC = new Set<string>(), usadosM = new Set<string>();
-  const mesmoC = (d: string, loja: string, v: number) => exC.find((r) => !usadosC.has(r.id) && r.d === d && Math.abs(Math.abs(+r.val) - Math.abs(v)) < 1 && (norm(r.loja) === norm(loja) || Math.abs(Math.abs(+r.val) - Math.abs(v)) < 0.01));
-  const mesmoM = (d: string, conta: string, v: number) => exM.find((r) => !usadosM.has(r.id) && r.d === d && String(r.conta || "Principal") === conta && Math.sign(+r.val) === Math.sign(v) && Math.abs(+r.val - v) < 1);
+  // MCW-08/C-02: só é o mesmo registo com o mesmo valor ao cêntimo; o resto entra marcado para rever
+  const cent = (a: number, b: number) => Math.abs(Math.abs(a) - Math.abs(b)) < 0.005;
+  const mesmaLoja = (a: unknown, b: unknown) => { const x = norm(a), y = norm(b); return !!x && !!y && (x === y || x.includes(y) || y.includes(x)); };
+  const mesmoC = (d: string, loja: string, v: number) => exC.find((r) => !usadosC.has(r.id) && r.d === d && cent(+r.val, v) && mesmaLoja(r.loja, loja));
+  const pareceC = (d: string, loja: string, v: number) => exC.some((r) => r.d === d && Math.abs(Math.abs(+r.val) - Math.abs(v)) < 1 && (mesmaLoja(r.loja, loja) || cent(+r.val, v)));
+  const mesmoM = (d: string, conta: string, v: number) => exM.find((r) => !usadosM.has(r.id) && r.d === d && String(r.conta || "Principal") === conta && Math.sign(+r.val) === Math.sign(v) && Math.abs(+r.val - v) < 0.005);
+  const pareceM = (d: string, conta: string, v: number) => exM.some((r) => r.d === d && String(r.conta || "Principal") === conta && Math.sign(+r.val) === Math.sign(v) && Math.abs(+r.val - v) < 1);
 
-  let nC = 0, nM = 0, ign = 0, ordBase = Date.now();
-  const sujos = new Set<string>();
+  let nC = 0, nM = 0, ign = 0, rev = 0, ordBase = Date.now();
+  const novos = new Map<string, Record<string, Rec>>();   // só o que esta leitura acrescenta, por documento
   const put = (docs: Map<string, { ano: string; items: Record<string, Rec> }>, coll: string, id: string, rec: Rec) => {
     const path = `${coll}/${rec.d.slice(0, 4)}`;
     if (!docs.has(path)) docs.set(path, { ano: rec.d.slice(0, 4), items: {} });
-    docs.get(path)!.items[id] = rec; sujos.add(path);
+    docs.get(path)!.items[id] = rec;
+    if (!novos.has(path)) novos.set(path, {});
+    novos.get(path)![id] = rec;
   };
 
   // linhas de um bloco → registos; na primeira vez, a marca de água é a última linha que já existe na app
   const bloco = (nome: string, linhas: unknown[][], ler: (r: unknown[]) => Rec | null, existe: (r: Rec) => { id: string } | undefined, usados: Set<string>, gravar: (r: Rec) => void) => {
     const recs = linhas.map((l) => (vazia(l) ? null : ler(l)));
+    // MCW-07: linhas que estavam vazias atrás da marca de água e entretanto foram preenchidas
+    const aindaVazias: number[] = [];
+    for (const i of pend[nome] || []) {
+      if (i >= linhas.length || i >= (wm[nome] ?? 0)) continue;
+      if (vazia(linhas[i])) { aindaVazias.push(i); continue; }
+      const r = recs[i];
+      if (!r) { ign++; aindaVazias.push(i); continue; }   // incompleta: volta a ser lida
+      if (r.val === 0) continue;
+      const e = existe(r);
+      if (e) { usados.add(e.id); continue; }
+      gravar(r);
+    }
     // as linhas já tratadas «gastam» o registo da app que lhes corresponde, para que uma linha nova igual
     // (ex.: dois serviços de 45 € no mesmo dia) não seja confundida com uma antiga
     const primeira = wm[nome] == null, lim = primeira ? recs.length : Math.min(wm[nome], recs.length);
@@ -158,30 +203,32 @@ async function sync() {
     // e pára antes da primeira linha incompleta, para a apanhar quando for completada (as seguintes não duplicam: já existem)
     let fim = linhas.length; while (fim > wm[nome] && vazia(linhas[fim - 1])) fim--;
     if (incompleta >= 0) fim = incompleta;
+    const ini = wm[nome];
     wm[nome] = Math.max(wm[nome], fim);
+    // MCW-07: as linhas vazias que a marca de água ultrapassa ficam pendentes
+    for (let i = ini; i < wm[nome]; i++) if (vazia(linhas[i])) aindaVazias.push(i);
+    pend[nome] = [...new Set(aindaVazias)].sort((a, b) => a - b);
   };
 
   bloco("compras", folha.compras,
     (l) => { const d = dataISO(l[0]), v = valor(l[2]), loja = String(l[1] ?? "").trim(); return d && v != null ? { d, val: Math.abs(v), loja: loja || "—" } as Rec : null; },
     (r) => mesmoC(r.d, String(r.loja), r.val), usadosC,
-    (r) => { put(compras, "compras", novoId("c"), { ...r, tipo: "consumivel", nota: "", origem: "folha" }); nC++; });
+    (r) => { const rv = pareceC(r.d, String(r.loja), r.val); if (rv) rev++;
+      put(compras, "compras", novoId("c"), { ...r, tipo: "consumivel", nota: rv ? "A rever: há uma compra parecida no mesmo dia." : "", origem: "folha", ...(rv ? { rever: true } : {}) }); nC++; });
   for (const [nome, conta, linhas] of [["principal", "Principal", folha.principal], ["avenca", "Avença", folha.avenca]] as const) {
     bloco(nome, linhas,
       (l) => { const d = dataISO(l[0]), v = valor(l[2]), desc = String(l[1] ?? "").trim(); return d && v != null ? { d, val: v, desc: desc || "—", conta } as Rec : null; },
       (r) => mesmoM(r.d, conta, r.val), usadosM,
-      (r) => { put(movs, "movimentos", novoId("b"), { ...r, ord: ordBase++, origem: "folha" }); nM++; });
+      (r) => { const rv = pareceM(r.d, conta, r.val); if (rv) rev++;
+        put(movs, "movimentos", novoId("b"), { ...r, ord: ordBase++, origem: "folha", ...(rv ? { rever: true } : {}) }); nM++; });
   }
 
-  // grava só os documentos alterados (por ano), no mesmo formato que a app usa
+  // MCW-04: grava só os registos novos, relendo cada documento e gravando apenas se não mudou entretanto
+  for (const [path, itens] of novos) await acrescentar(path, itens);
   const agora = new Date().toISOString();
-  for (const path of sujos) {
-    const d = (path.startsWith("compras/") ? compras : movs).get(path)!;
-    const { error } = await SB.from("docs").upsert({ path, data: { ano: d.ano, items: d.items }, updated_at: agora });
-    if (error) throw error;
-  }
-  const { error } = await SB.from("docs").upsert({ path: STATE, data: { wm, sync_at: agora, ultimo: { compras: nC, movimentos: nM, ignoradas: ign } }, updated_at: agora });
+  const { error } = await SB.from("docs").upsert({ path: STATE, data: { wm, pend, sync_at: agora, ultimo: { compras: nC, movimentos: nM, ignoradas: ign, aRever: rev } }, updated_at: agora });
   if (error) throw error;
-  return { configurado: true, compras: nC, movimentos: nM, ignoradas: ign, sync_at: agora };
+  return { configurado: true, compras: nC, movimentos: nM, ignoradas: ign, aRever: rev, sync_at: agora };
 }
 
 Deno.serve(async (req) => {
