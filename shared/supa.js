@@ -82,14 +82,20 @@ if (nativeApp) document.addEventListener("visibilitychange", () => {
 async function ensureAuth(){
   if (!sb){ overlay(`<p style="margin:0">A app ainda não está ligada à base de dados. Preencha o ficheiro <b>config.js</b> (ver README).</p>`); return null; }
   let { data:{ session } } = await sb.auth.getSession();
-  if (!session && !navigator.onLine) return "offline";
+  /* MCW-03: sem sessão não há acesso aos dados guardados no aparelho, nem sem rede (E3.2: «Tentar de novo») */
+  if (!session && !navigator.onLine){
+    clearCache();
+    overlay(`<p style="margin:0">Sem ligação à internet. Para entrar na gestão é preciso rede, porque a sessão terminou.</p><button id="cw-retry" style="${btnCss}">Tentar de novo</button>`);
+    document.getElementById("cw-retry").onclick = () => location.reload();
+    return null;
+  }
   if (!session) session = await loginUI();
   else await faceLock();
   const { data, error } = await sb.from("admins").select("email").limit(1);
   if (error && navigator.onLine){ overlay(`<p style="margin:0">Não foi possível verificar o acesso: ${esc(error.message)}</p>`); return null; }
   if (!error && (!data || !data.length)){
     overlay(`<p style="margin:0">Esta conta não tem acesso à gestão.</p><button id="cw-out" style="${btnCss}">Terminar sessão</button>`);
-    document.getElementById("cw-out").onclick = async () => { await sb.auth.signOut(); location.reload(); };
+    document.getElementById("cw-out").onclick = async () => { await sb.auth.signOut(); clearCache(); location.reload(); };
     return null;
   }
   return session;
@@ -98,6 +104,9 @@ let authP = null; const auth = () => authP || (authP = ensureAuth());
 
 /* ---------- base de dados (tabela docs: path → data jsonb) ---------- */
 const CK = "cw-cache:";
+/* MCW-03: a cópia local dos dados é apagada quando a sessão termina */
+function clearCache(){ try { for (let i = localStorage.length - 1; i >= 0; i--){ const k = localStorage.key(i); if (k && k.startsWith(CK)) localStorage.removeItem(k); } } catch(e){} }
+if (sb) sb.auth.onAuthStateChange(ev => { if (ev === "SIGNED_OUT") clearCache(); });
 const saveCache = (k, v) => { try { localStorage.setItem(CK + k, JSON.stringify(v)); } catch(e){} };
 const loadCache = k => { try { const v = localStorage.getItem(CK + k); return v ? JSON.parse(v) : null; } catch(e){ return null; } };
 const snap = (path, data) => ({ id: path.split("/").pop(), exists: data != null, data: () => data, metadata:{ fromCache:false, hasPendingWrites:false } });
@@ -120,6 +129,29 @@ async function getDoc(path){
   if (error) throw error;
   return data ? data.data : null;
 }
+/* MCW-04: alteração atómica de um documento (controlo otimista pela coluna updated_at).
+   fn recebe uma cópia dos dados atuais (ou null) e devolve os dados novos (undefined = nada a gravar).
+   Se outro dispositivo ou a sincronização da folha gravou entretanto, volta a ler e reaplica fn. */
+async function mutateDoc(path, fn){
+  for (let tent = 0; tent < 6; tent++){
+    const { data:row, error } = await sb.from("docs").select("data,updated_at").eq("path", path).maybeSingle();
+    if (error) throw error;
+    const next = fn(row ? JSON.parse(JSON.stringify(row.data)) : null);
+    if (next === undefined) return row ? row.data : null;
+    const now = new Date().toISOString();
+    if (row){
+      const { data:upd, error:e2 } = await sb.from("docs").update({ data:next, updated_at:now }).eq("path", path).eq("updated_at", row.updated_at).select("path");
+      if (e2) throw e2;
+      if (upd && upd.length){ localRefresh(path); return next; }
+    } else {
+      const { error:e3 } = await sb.from("docs").insert({ path, data:next, updated_at:now });
+      if (!e3){ localRefresh(path); return next; }
+      if (e3.code !== "23505") throw e3;   // outro dispositivo criou o documento entretanto: tentar de novo
+    }
+    await new Promise(r => setTimeout(r, 120 * (tent + 1) + Math.random() * 150));
+  }
+  throw { code:"aborted", message:"Os dados foram alterados noutro dispositivo ao mesmo tempo. Tente de novo." };
+}
 async function setDoc(path, data){
   const { error } = await sb.from("docs").upsert({ path, data, updated_at: new Date().toISOString() });
   if (error) throw error;
@@ -135,8 +167,10 @@ const db = {
           const { data, error } = await sb.from("docs").select("path,data").like("path", c + "/%");
           if (error) throw error;
           saveCache("c:" + c, data); cb({ docs: data.map(r => snap(r.path, r.data)), size: data.length, empty: !data.length });
+          return true;
         } catch(e){
           const d = loadCache("c:" + c); if (d) cb({ docs: d.map(r => snap(r.path, r.data)), size: d.length, empty: !d.length }); else if (err) err({ code:"unavailable", message:String(e.message || e) });
+          return false;   // MCW-09: a mostrar a cópia local, não dados novos
         } } };
       listeners.add(l); ensureChannel(); l.refresh(); return () => listeners.delete(l);
     } };
@@ -145,12 +179,13 @@ const db = {
     return {
       get: async () => snap(path, await getDoc(path)),
       set: async d => setDoc(path, d),
-      update: async d => { const cur = await getDoc(path); if (cur == null) throw { code:"invalid_argument", message:"Documento inexistente" }; await setDoc(path, deepMerge(cur, d)); },
+      update: async d => { await mutateDoc(path, cur => { if (cur == null) throw { code:"invalid_argument", message:"Documento inexistente" }; return deepMerge(cur, d); }); },
+      mutate: fn => mutateDoc(path, fn),
       delete: async () => { const { error } = await sb.from("docs").delete().eq("path", path); if (error) throw error; localRefresh(path); },
       onSnapshot(cb, err){
         const l = { matches: p => p === path, refresh: async () => {
-          try { const d = await getDoc(path); saveCache("d:" + path, d); cb(snap(path, d)); }
-          catch(e){ const d = loadCache("d:" + path); if (d !== null) cb(snap(path, d)); else if (err) err({ code:"unavailable", message:String(e.message || e) }); } } };
+          try { const d = await getDoc(path); saveCache("d:" + path, d); cb(snap(path, d)); return true; }
+          catch(e){ const d = loadCache("d:" + path); if (d !== null) cb(snap(path, d)); else if (err) err({ code:"unavailable", message:String(e.message || e) }); return false; } } };
         listeners.add(l); ensureChannel(); l.refresh(); return () => listeners.delete(l);
       }
     };
@@ -234,7 +269,9 @@ const downloads = {
 
 /* ---------- área de cliente ---------- */
 const portal = {
-  async upsert(row){ const { error } = await sb.from("portal").upsert(Object.assign({}, row, { updated_at: new Date().toISOString() })); if (error) throw error; }
+  async upsert(row){ const { error } = await sb.from("portal").upsert(Object.assign({}, row, { updated_at: new Date().toISOString() })); if (error) throw error; },
+  /* MCW-02: ficha apagada → o resumo deixa de estar acessível ao cliente */
+  async remove(cliente_id){ const { error } = await sb.from("portal").delete().eq("cliente_id", cliente_id); if (error) throw error; }
 };
 
 /* ---------- pedidos de marcação e dias disponíveis ---------- */

@@ -461,10 +461,23 @@ function recCost(sv,cat){
   return { prod:r2(prod), cons:r2(cons), custo:r2(prod+cons), horas:Math.round(horas*100)/100, mo:r2(mo) };
 }
 const resOf = r => { const c=recCost(r.sv,r.cat); return r2((+r.fat||0) - extrasSum(r) - c.custo - c.mo); };
-function clientByName(n){ const t=(n||"").trim().toLowerCase(); return list("clientes").find(c=>(c.nome||"").trim().toLowerCase()===t); }
+/* MCW-01: o NIF identifica o cliente; o nome pode repetir-se. Os serviços ligam à ficha pelo identificador (cliId). */
+const nomeKey = n => String(n||"").trim().toLowerCase();
+const nifKey = n => String(n||"").replace(/\D/g,"");
+const clientesComNome = n => list("clientes").filter(c=>nomeKey(c.nome)===nomeKey(n));
+/* cliente com este nome, só se for o único (com nomes repetidos é preciso escolher pelo NIF) */
+function clientByName(n){ const cs=clientesComNome(n); return cs.length===1?cs[0]:undefined; }
+/* ficha do cliente de um serviço: pelo cliId; nos registos antigos sem cliId, pelo nome se não houver ambiguidade */
+const clientOf = r => r && r.cliId && S.clientes[r.cliId] ? S.clientes[r.cliId] : clientByName(r && r.cli);
+const doCliente = c => r => r.cliId ? r.cliId===c._id : (nomeKey(r.cli)===nomeKey(c.nome) && clientesComNome(c.nome).length===1);
+/* chave para estatísticas por cliente e respetivo rótulo (com o NIF quando há outro cliente com o mesmo nome) */
+const cliKey = r => r.cliId || "n:"+String(r.cli||"").trim();
+const cliRotulo = c => c ? c.nome+(clientesComNome(c.nome).length>1?` (NIF ${fmtNif(c.nif)||"—"})`:"") : "—";
+const cliNome = k => String(k).startsWith("n:") ? String(k).slice(2) : cliRotulo(S.clientes[k]);
+const clientByKey = k => String(k).startsWith("n:") ? clientByName(String(k).slice(2)) : S.clientes[k];
 const cliDesc = c => c ? (c.descTipo || (c.familia?"familia":"")) : "";
 const DESC_LBL = {familia:"Família", first:"First customer"};
-function defaultDesc(cli){ return cliDesc(clientByName(cli)); }
+function defaultDesc(cli,cliId){ return cliDesc(cliId&&S.clientes[cliId]?S.clientes[cliId]:clientByName(cli)); }
 function descPctOf(tipo, manual){ const d=descRates(); return tipo==="familia"?d.familia : tipo==="first"?d.first : tipo==="manual"?(+manual||0) : 0; }
 function calcServico(f){
   const tab=((S.cfg||{}).precos||{})[f.cat]||{};
@@ -502,16 +515,27 @@ let q=Promise.resolve();
 const enqueue = fn => { const p=q.then(fn); q=p.catch(()=>{}); return p; };
 const bucketOf = (coll,rec) => coll==="clientes" ? "todos" : (rec.d||today()).slice(0,4);
 function clean(rec){ const o={}; for (const [k,v] of Object.entries(rec)) if (!k.startsWith("_")) o[k]=v; return o; }
-async function removeFrom(coll,bucket,id){ const ref=db.doc(coll+"/"+bucket); const s=await ref.get(); if (!s.exists) return; const d=JSON.parse(JSON.stringify(s.data())); if (!d.items||!(id in d.items)) return; delete d.items[id]; await ref.set(d); }
+/* MCW-04: cada alteração lê e grava o documento anual de forma atómica (controlo otimista em shared/supa.js):
+   se outro dispositivo ou a sincronização da folha gravou entretanto, a alteração é reaplicada sobre a versão nova. */
+async function mutateDoc(path,fn){
+  const ref=db.doc(path);
+  if (ref.mutate) return ref.mutate(fn);
+  const s=await ref.get(), d=fn(s.exists?JSON.parse(JSON.stringify(s.data())):null); if (d!==undefined) await ref.set(d);
+}
+function removeFrom(coll,bucket,id){ return mutateDoc(coll+"/"+bucket, d=>{ if (!d||!d.items||!(id in d.items)) return undefined; delete d.items[id]; return d; }); }
 function putItem(coll,id,rec){
   const bucket=bucketOf(coll,rec), body=clean(rec);
   return retryable(()=>putItem(coll,id,rec), enqueue(async()=>{
     const old=S[coll][id];
     if (old && old._b && old._b!==bucket) await removeFrom(coll,old._b,id);
-    const ref=db.doc(coll+"/"+bucket), s=await ref.get();
-    if (s.exists){
-      const d=JSON.parse(JSON.stringify(s.data())); d.items=d.items||{}; d.items[id]=body; await ref.set(d);
-    } else await ref.set({ano:bucket, items:{[id]:body}});
+    await mutateDoc(coll+"/"+bucket, d=>{ d=d||{ano:bucket,items:{}}; d.items=d.items||{}; d.items[id]=body; return d; });
+  }));
+}
+/* altera vários registos de uma coleção (agrupados por documento anual), numa gravação por documento */
+function patchItems(coll,ids,fn){
+  const by={}; for (const id of ids){ const r=S[coll][id]; if (r) (by[r._b]=by[r._b]||[]).push(id); }
+  return retryable(()=>patchItems(coll,ids,fn), enqueue(async()=>{
+    for (const [b,list] of Object.entries(by)) await mutateDoc(coll+"/"+b, d=>{ if (!d||!d.items) return undefined; for (const id of list) if (d.items[id]) fn(d.items[id],id); return d; });
   }));
 }
 function delItem(coll,id){ const old=S[coll][id]; if (!old) return Promise.resolve(); return retryable(()=>delItem(coll,id), enqueue(()=>removeFrom(coll,old._b,id))); }
@@ -524,6 +548,7 @@ function writeErr(e){
   const op=lastOp; lastOp=null;
   if (e && e.code==="invalid_argument"){ readOnly=true; toast("Não tem permissão para gravar alterações."); }
   else if (e && e.code==="quota_exceeded") toast("A base de dados atingiu o limite de documentos.");
+  else if (e && e.code==="aborted") toast(e.message||"Os dados foram alterados noutro dispositivo.", op?"Tentar de novo":undefined, op?()=>op().then(()=>toast("Gravado."), writeErr):undefined);
   else if (op) toast("Não foi possível gravar. Verifique a ligação.", "Tentar de novo", ()=>op().then(()=>toast("Gravado."), writeErr));
   else toast("Não foi possível gravar. Verifique a ligação e tente de novo.");
 }
@@ -531,8 +556,18 @@ let rT=null; const schedule=()=>{ clearTimeout(rT); rT=setTimeout(render,30); };
 function subscribe(coll){
   db.collection(coll).onSnapshot(snap=>{
     const m={}; for (const doc of snap.docs){ const it=(doc.data()||{}).items||{}; for (const [id,r] of Object.entries(it)) m[id]=Object.assign({},r,{_b:doc.id,_id:id}); }
-    S[coll]=m; loaded.add(coll); schedule();
+    S[coll]=m; loaded.add(coll); schedule(); ligarServicosAntigos();
   }, e=>{ console.error(coll,e); $("#dot").className="dot off"; });
+}
+/* MCW-01: serviços antigos sem cliId ficam ligados à ficha quando o nome corresponde a um só cliente.
+   Os ambíguos (nome repetido) ficam como estão até serem escolhidos na ficha do serviço. */
+let ligando=false;
+function ligarServicosAntigos(){
+  if (ligando||readOnly||!online||!loaded.has("servicos")||!loaded.has("clientes")) return;
+  const porId={}; for (const r of list("servicos")) if (!r.cliId){ const c=clientByName(r.cli); if (c) porId[r._id]=c._id; }
+  const ids=Object.keys(porId); if (!ids.length) return;
+  ligando=true;
+  patchItems("servicos",ids,(r,id)=>{ if (!r.cliId) r.cliId=porId[id]; }).catch(e=>console.error("ligar serviços",e)).finally(()=>{ ligando=false; });
 }
 let slow=false;   // E3.1: «a carregar…» nunca fica infinito
 async function boot(){
@@ -560,7 +595,8 @@ function folhaMsg(r){
   if (!r || r.configurado===false) return "Atualizado. A leitura da folha ainda não está configurada.";
   const c=+r.compras||0, m=+r.movimentos||0, ig=+r.ignoradas||0;
   const base = c||m ? `Atualizado. ${[c?plural(c,"compra nova","compras novas"):"",m?plural(m,"movimento novo","movimentos novos"):""].filter(Boolean).join(" e ")} da folha.` : "Atualizado. Sem lançamentos novos na folha.";
-  return base + (ig?` ${plural(ig,"linha ignorada","linhas ignoradas")} por falta de data ou valor.`:"");
+  const rv=+r.aRever||0;   // MCW-08: lançamentos parecidos com outros do mesmo dia entram marcados «A rever»
+  return base + (ig?` ${plural(ig,"linha ignorada","linhas ignoradas")} por falta de data ou valor.`:"") + (rv?` ${plural(rv,"lançamento marcado","lançamentos marcados")} «A rever»: confirme que não é duplicado.`:"");
 }
 function atualizarTudo(){
   if (refreshing) return refreshing;          // nunca duas atualizações ao mesmo tempo
@@ -568,7 +604,8 @@ function atualizarTudo(){
     if (!navigator.onLine || !db){ toast("Sem ligação. Os dados mostrados são os últimos guardados.","Tentar de novo",atualizarTudo); return; }   // E3.1
     let msg="Atualizado.";
     if (folhaApi){ try { msg=folhaMsg(await folhaApi.sync()); } catch(e){ msg="Dados da app atualizados. Não foi possível ler a folha: "+String(e&&e.message||e); } }   // E3.5
-    try { await db.refreshAll(); } catch(e){ console.error(e); }
+    try { const r=await db.refreshAll(); if (Array.isArray(r) && r.some(x=>x===false)) msg="Sem ligação ao servidor: a mostrar a última informação guardada."; }   // MCW-09/E3.3
+    catch(e){ console.error(e); msg="Não foi possível atualizar: a mostrar a última informação guardada."; }
     loadPedidos(); loadAtual(); if (window.CWDash) window.CWDash.refresh(); schedule();
     toast(msg);
   })().finally(()=>{ refreshing=null; });
@@ -625,7 +662,7 @@ function pedidoCard(p){ const d=p.dados||{}, sv=(d.sv||[]).map(k=>SVK[k]?SVK[k].
     <div class="note">${n?`Já tem ${n} marcaç${n===1?"ão":"ões"} neste dia${cap?` (máx. ${cap})`:""}.`:"Sem outras marcações neste dia."}${fechado?" Este dia está marcado como indisponível.":""}</div>
     <div class="acts"><button class="btn sm pri" data-ped-ok="${esc(p.id)}">Aceitar</button><button class="btn sm" data-ped-no="${esc(p.id)}">Recusar</button></div></div></div>`; }
 function aceitarPedido(id){ const p=PED.find(x=>x.id===id); if (!p) return; const d=p.dados||{}, c=S.clientes[p.cliente_id];
-  editServico(null,{ cli:c?c.nome:(p.nome||""), d:d.d, hora:d.periodo==="tarde"?"14:00":"09:00", viatura:d.viatura||"", matricula:(d.matricula||"").toUpperCase(),
+  editServico(null,{ cli:c?c.nome:(p.nome||""), cliId:c?c._id:"", d:d.d, hora:d.periodo==="tarde"?"14:00":"09:00", viatura:d.viatura||"", matricula:(d.matricula||"").toUpperCase(),
     sv:(d.sv||[]).filter(k=>SVK[k]), notas:d.notas?"Pedido do cliente: "+d.notas:"", pedido:id }); }
 function recusarPedido(id){ const p=PED.find(x=>x.id===id); if (!p) return;
   openSheet("Recusar pedido", `<p class="note">${esc(p.nome||"")} · ${esc(fmtD((p.dados||{}).d))}</p>
@@ -672,8 +709,9 @@ function editDisponibilidade(){
 
 /* ============ área de cliente (só na versão alojada) ============ */
 let portal=null; const pq=new Set(); let pT=null;
-function queuePortal(name){ if (!portal||!name) return; pq.add(name); clearTimeout(pT); pT=setTimeout(flushPortal,2000); }
-async function flushPortal(){ const names=[...pq]; pq.clear(); for (const n of names){ const c=clientByName(n); if (!c) continue; try { await portal.upsert(portalData(c)); } catch(e){ console.error("portal",e); } } }
+/* recebe o identificador da ficha (ou, em registos antigos, o nome) */
+function queuePortal(x){ if (!portal||!x) return; pq.add(x); clearTimeout(pT); pT=setTimeout(flushPortal,2000); }
+async function flushPortal(){ const ks=[...pq]; pq.clear(); for (const k of ks){ const c=S.clientes[k]||clientByName(k); if (!c) continue; try { await portal.upsert(portalData(c)); } catch(e){ console.error("portal",e); } } }
 /* ---- envio do acesso à área de cliente por SMS (abre a app Mensagens com o texto preenchido) ---- */
 const CLIENTE_LINK = (window.CW_CONFIG && CW_CONFIG.clienteLink) || "https://app.mrcleanwolf.com/c";
 const semProto = u => String(u).replace(/^https?:\/\//,"");   // no SMS o link fica mais curto; o iPhone e o Android reconhecem-no na mesma
@@ -692,7 +730,7 @@ const MARC_URL = (window.CW_CONFIG && CW_CONFIG.marcacaoLink) || "https://www.mr
 const b64u = s => btoa(unescape(encodeURIComponent(s))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
 function smsMarcacao(r){
   if (!r.d){ toast("Indique primeiro a data da marcação."); return; }
-  const c=clientByName(r.cli), num=smsNumber(c&&c.tel);
+  const c=clientOf(r), num=smsNumber(c&&c.tel);
   if (num.replace(/\D/g,"").length<9){ toast("Falta o telemóvel do cliente. Abra a ficha do cliente e use «Editar»."); return; }
   const hora=r.hora||"09:00", mins=Math.max(60,Math.round(recCost(r.sv,r.cat).horas*60));
   const sv=(r.sv||[]).map(k=>SVK[k]?SVK[k].l:k).join(", "), via=[r.viatura,r.matricula].filter(Boolean).join(" ");
@@ -715,7 +753,7 @@ async function smsDados(c){
 }
 const matKey = m => String(m||"").toUpperCase().replace(/[^A-Z0-9]/g,"");
 function viasDe(c){ const m=new Map(); const add=v=>{ if (!v||(!v.viatura&&!v.matricula)) return; const k=matKey(v.matricula)||("v:"+String(v.viatura).toLowerCase()); if (!m.has(k)) m.set(k,{viatura:v.viatura||"",matricula:v.matricula||""}); };
-  (c.viaturas||[]).forEach(add); list("servicos").filter(r=>r.cli===c.nome).sort(byDateDesc).forEach(r=>add(r)); return [...m.values()]; }
+  (c.viaturas||[]).forEach(add); list("servicos").filter(doCliente(c)).sort(byDateDesc).forEach(r=>add(r)); return [...m.values()]; }
 const ATU_F = [["email","E-mail"],["tel","Telemóvel"],["morada","Morada"],["nif","NIF"]];
 const atuFmt = (k,v) => k==="tel"?fmtTel(v):k==="nif"?fmtNif(v):v;
 function atualCard(a){ const c=S.clientes[a.cliente_id]||{}, d=a.dados||{};
@@ -728,10 +766,10 @@ async function atualAplicar(id){ const a=ATU.find(x=>x.id===id); if (!a) return;
   if (!c){ toast("A ficha deste cliente já não existe."); return; }
   const d=a.dados||{}, rec=Object.assign({},clean(c)); for (const [k] of ATU_F) if (d[k]) rec[k]=d[k];
   if ((d.viaturas||[]).length){ const cur=[...(c.viaturas||[])]; for (const v of d.viaturas){ const i=cur.findIndex(x=>matKey(x.matricula)&&matKey(x.matricula)===matKey(v.matricula)); if (i>=0) cur[i]=Object.assign({},cur[i],{viatura:v.viatura||cur[i].viatura}); else cur.push({viatura:v.viatura||"",matricula:v.matricula||""}); } rec.viaturas=cur; }
-  try { await putItem("clientes",a.cliente_id,rec); await atualApi.update(id,"aplicado"); ATU=ATU.filter(x=>x.id!==id); queuePortal(c.nome); schedule(); toast("Ficha atualizada."); } catch(e){ writeErr(e); } }
+  try { await putItem("clientes",a.cliente_id,rec); await atualApi.update(id,"aplicado"); ATU=ATU.filter(x=>x.id!==id); queuePortal(a.cliente_id); schedule(); toast("Ficha atualizada."); } catch(e){ writeErr(e); } }
 async function atualDescartar(id){ try { await atualApi.update(id,"descartado"); ATU=ATU.filter(x=>x.id!==id); schedule(); toast("Resposta descartada."); } catch(e){ writeErr(e); } }
 function portalData(c){
-  const svc=list("servicos").filter(r=>r.cli===c.nome).sort(byDateDesc);
+  const svc=list("servicos").filter(doCliente(c)).sort(byDateDesc);
   const vias=viasDe(c);
   return { cliente_id:c._id, email:(c.email||"").trim().toLowerCase()||null, nome:c.nome, dados:{ atualizado:today(), viaturas:vias,
     servicos:svc.map(r=>{ const vis=r.visivelCliente!==false; return { d:r.d, hora:r.hora||"", estado:est(r), viatura:r.viatura||"", matricula:r.matricula||"", cat:r.cat||"",
@@ -866,9 +904,9 @@ function analytics(svcAll){
   const from=addDays(today(),-365), last=done.filter(r=>r.d>=from);
   const mix={}; for (const r of last) for (const k of r.sv||[]) mix[k]=(mix[k]||0)+1;
   const mixE=Object.entries(mix).sort((a,b)=>b[1]-a[1]).slice(0,7);
-  const top={},vis={}; for (const r of last){ top[r.cli]=(top[r.cli]||0)+(+r.fat||0); vis[r.cli]=(vis[r.cli]||0)+1; }
+  const top={},vis={}; for (const r of last){ const k=cliKey(r); top[k]=(top[k]||0)+(+r.fat||0); vis[k]=(vis[k]||0)+1; }
   const topE=Object.entries(top).sort((a,b)=>b[1]-a[1]).slice(0,5);
-  const cnt={}, first={}; for (const r of [...done].sort((a,b)=>a.d.localeCompare(b.d))){ cnt[r.cli]=(cnt[r.cli]||0)+1; if (!first[r.cli]) first[r.cli]=r.d.slice(0,4); }
+  const cnt={}, first={}; for (const r of [...done].sort((a,b)=>a.d.localeCompare(b.d))){ const k=cliKey(r); cnt[k]=(cnt[k]||0)+1; if (!first[k]) first[k]=r.d.slice(0,4); }
   const nCli=Object.keys(cnt).length, ret=Object.values(cnt).filter(v=>v>=2).length, novos=Object.values(first).filter(y=>y===String(new Date().getFullYear())).length;
   let dsc=0,dn=0; for (const r of last){ const pct=r.descPct||descPctOf(r.descTipo); if (pct>0 && r.soma){ dsc+=r.soma*pct; dn++; } }
   return `<div class="grid2 grid3">
@@ -879,7 +917,7 @@ function analytics(svcAll){
       ${mixE.map(([k,n])=>`<div class="hb"><span>${esc(SVK[k]?SVK[k].l:k)}</span><span>${n}</span><span class="bar"><i style="width:${(n/Math.max(1,last.length)*100).toFixed(1)}%"></i></span></div>`).join("")||`<span class="note">Sem dados.</span>`}
     </div></section>
     <section class="card"><div class="card-h"><span class="lbl">Clientes</span><span class="note">12 meses</span></div>
-      ${topE.map(([n,v])=>`<div class="hb" style="border-bottom:1px solid var(--line2);padding-bottom:5px"><span><b style="font-weight:600">${esc(n)}</b> <span class="muted">· ${vis[n]} ${vis[n]===1?"visita":"visitas"}</span></span><span class="copper">${eur0(v)}</span></div>`).join("")}
+      ${topE.map(([n,v])=>`<div class="hb" style="border-bottom:1px solid var(--line2);padding-bottom:5px"><span><b style="font-weight:600">${esc(cliNome(n))}</b> <span class="muted">· ${vis[n]} ${vis[n]===1?"visita":"visitas"}</span></span><span class="copper">${eur0(v)}</span></div>`).join("")}
       <div class="kv" style="margin-top:4px"><span>Voltaram</span><span>${ret} de ${nCli} (${nCli?nf0.format(ret/nCli*100):0} %)</span><span>Novos este ano</span><span>${novos}</span><span>Descontos</span><span>${eur0(dsc)} em ${dn} serviços</span></div>
     </section>
   </div>`;
@@ -938,7 +976,7 @@ function vServicos(){
 function vFaturas(){
   const pend=list("servicos").filter(r=>fatEst(r)==="por_emitir").sort((a,b)=>a.d.localeCompare(b.d));
   const done=list("servicos").filter(r=>r.fatura&&r.fatura.estado==="emitida").sort((a,b)=>(b.fatura.data||b.d).localeCompare(a.fatura.data||a.d)).slice(0,10);
-  const row = r => { const c=clientByName(r.cli)||{}; return `<div class="ag" style="grid-template-columns:minmax(0,1fr) auto"><div>
+  const row = r => { const c=clientOf(r)||{}; return `<div class="ag" style="grid-template-columns:minmax(0,1fr) auto"><div>
       <div class="r-title"><span class="nm">${esc(r.cli)}</span><span class="muted n" style="font-weight:500;font-size:13px">NIF ${esc(fmtNif(c.nif)||"—")}</span></div>
       <div class="r-sub">${fmtD(r.d)} · ${esc(descricaoFatura(r))}</div>
       <div class="acts"><button class="btn sm pri" data-emit="${esc(r._id)}">Marcar emitida</button><button class="btn sm" data-copy="${esc(r._id)}">Copiar dados</button><button class="btn sm" data-edit="servicos:${esc(r._id)}">Abrir</button></div></div>
@@ -954,13 +992,13 @@ function descricaoFatura(r){
 
 /* ---------- Clientes ---------- */
 function vClientes(){
-  const fat={},n={},last={}; for (const r of list("servicos")){ fat[r.cli]=(fat[r.cli]||0)+(+r.fat||0); n[r.cli]=(n[r.cli]||0)+1; if (!last[r.cli]||r.d>last[r.cli]) last[r.cli]=r.d; }
+  const fat={},n={},last={}; for (const r of list("servicos")){ const c=clientOf(r), k=c?c._id:"n:"+r.cli; fat[k]=(fat[k]||0)+(+r.fat||0); n[k]=(n[k]||0)+1; if (!last[k]||r.d>last[k]) last[k]=r.d; }
   // Ordenação (R2.4: por defeito alfabética; R1.4: lista nativa; a escolha fica guardada no aparelho). Empates e clientes sem serviços: por nome, no fim.
-  const porNome=(a,b)=>(a.nome||"").localeCompare(b.nome||"","pt"), L=c=>last[c.nome]||"";
+  const porNome=(a,b)=>(a.nome||"").localeCompare(b.nome||"","pt"), L=c=>last[c._id]||"";
   const ORD={ nome:porNome, num:(a,b)=>(+a.cod||0)-(+b.cod||0)||porNome(a,b),
     recente:(a,b)=>L(b).localeCompare(L(a))||porNome(a,b),
-    fat:(a,b)=>(fat[b.nome]||0)-(fat[a.nome]||0)||porNome(a,b),
-    vezes:(a,b)=>(n[b.nome]||0)-(n[a.nome]||0)||porNome(a,b),
+    fat:(a,b)=>(fat[b._id]||0)-(fat[a._id]||0)||porNome(a,b),
+    vezes:(a,b)=>(n[b._id]||0)-(n[a._id]||0)||porNome(a,b),
     parado:(a,b)=>(!L(a)-!L(b))||L(a).localeCompare(L(b))||porNome(a,b) };
   const ORD_LBL=[["nome","Nome (A–Z)"],["num","N.º de cliente"],["recente","Atividade mais recente"],["fat","Mais faturado"],["vezes","Mais serviços"],["parado","Mais tempo sem serviço"]];
   // Arquivo de clientes: os arquivados saem da lista e das sugestões, mas o histórico mantém-se (R2.3: opção rara só aparece quando existe).
@@ -972,8 +1010,8 @@ function vClientes(){
     + `<div class="tools"><label class="ord"><span>Ordenar</span><select class="yr" data-cliord aria-label="Ordenar clientes por">${ORD_LBL.map(([k,l])=>`<option value="${k}" ${ui.cliOrd===k?"selected":""}>${l}</option>`).join("")}</select></label>${nArq ? `<div class="seg"><button data-cliarq="0" aria-pressed="${!ui.cliArq}">Ativos</button><button data-cliarq="1" aria-pressed="${ui.cliArq}">Arquivados (${nArq})</button></div>` : ""}</div>`
     + rows.map(c=>`<button class="row" data-cli="${esc(c._id)}"><span class="r-date"><b>${esc(c.cod??"")}</b>nº</span>
       <span><span class="r-title"><span class="nm">${esc(c.nome)}</span>${cliDesc(c)?`<span class="pill p-fa">${DESC_LBL[cliDesc(c)]}</span>`:""}</span>
-      <span class="r-sub">${n[c.nome]||0} serviços${last[c.nome]?" · último "+fmtD(last[c.nome]):""}</span></span>
-      <span class="r-amt"><b>${eur0(fat[c.nome]||0)}</b></span></button>`).join("") || `<div class="empty">${ui.cliArq?"Nenhum cliente arquivado encontrado.":"Nenhum cliente encontrado."}</div>`;
+      <span class="r-sub">${n[c._id]||0} serviços${last[c._id]?" · último "+fmtD(last[c._id]):""}${clientesComNome(c.nome).length>1?" · NIF "+esc(fmtNif(c.nif)||"—"):""}</span></span>
+      <span class="r-amt"><b>${eur0(fat[c._id]||0)}</b></span></button>`).join("") || `<div class="empty">${ui.cliArq?"Nenhum cliente arquivado encontrado.":"Nenhum cliente encontrado."}</div>`;
 }
 
 /* ---------- Compras ---------- */
@@ -984,7 +1022,7 @@ function vCompras(){
   const tot={}; for (const r of rowsY){ const t=tipoOf(r)||"sem"; tot[t]=(tot[t]||0)+(+r.val||0); }
   const tl = t => t==="sem"?"Por classificar":(TIPOS_COMPRA.find(x=>x[0]===t)||[0,t])[1];
   const row = r => { const d=r.d||""; return `<button class="row" data-edit="compras:${esc(r._id)}"><span class="r-date"><b>${d.slice(8,10)}</b>${MES3[+d.slice(5,7)-1]||""}</span>
-    <span><span class="r-title"><span class="nm">${esc(r.loja||"—")}</span></span><span class="r-sub"><span class="chip">${esc(tl(tipoOf(r)||"sem"))}</span>${(r.itens||[]).length?esc(itensResumo(r.itens)):""}${r.nota?esc(r.nota):""}${(r.fotos||[]).length?`<span class="chip">📎</span>`.replace("📎","doc"):""}${pdfUrl(r)?`<span class="chip">PDF</span>`:""}</span></span>
+    <span><span class="r-title"><span class="nm">${esc(r.loja||"—")}</span>${r.rever?`<span class="pill p-fa">A rever</span>`:""}</span><span class="r-sub"><span class="chip">${esc(tl(tipoOf(r)||"sem"))}</span>${(r.itens||[]).length?esc(itensResumo(r.itens)):""}${r.nota?esc(r.nota):""}${(r.fotos||[]).length?`<span class="chip">📎</span>`.replace("📎","doc"):""}${pdfUrl(r)?`<span class="chip">PDF</span>`:""}</span></span>
     <span class="r-amt"><b>${eur(r.val)}</b></span></button>`; };
   return header("Compras", `${rowsY.length} faturas · ${eur(rowsY.reduce((a,r)=>a+(+r.val||0),0))}`, yearSel())
     + `<div class="kpis" style="margin-bottom:12px">${["consumivel","equipamento","cliente","sem"].filter(t=>tot[t]).map(t=>`<div class="kpi"><span class="lbl">${tl(t)}</span><span class="v">${eur0(tot[t])}</span></div>`).join("")}</div>`
@@ -1000,7 +1038,7 @@ function vBanco(){
   let s=0; for (const r of all){ s+=+r.val||0; r._saldo=r2(s); }
   const rows=all.filter(inYear).filter(r=>matchQ(r.desc||"")).reverse();
   const ent=rows.filter(r=>r.val>0).reduce((a,r)=>a+r.val,0), sai=rows.filter(r=>r.val<0).reduce((a,r)=>a+r.val,0);
-  const row = r => { const d=r.d||""; return `<button class="row" data-edit="movimentos:${esc(r._id)}"><span class="r-date"><b>${d.slice(8,10)}</b>${MES3[+d.slice(5,7)-1]||""}</span><span><span class="r-title"><span class="nm">${esc(r.desc||"—")}</span></span><span class="r-sub n">saldo ${nf2.format(r._saldo)} €</span></span><span class="r-amt"><b class="${r.val<0?"neg":"pos"}">${r.val>0?"+":""}${nf2.format(r.val)}</b></span></button>`; };
+  const row = r => { const d=r.d||""; return `<button class="row" data-edit="movimentos:${esc(r._id)}"><span class="r-date"><b>${d.slice(8,10)}</b>${MES3[+d.slice(5,7)-1]||""}</span><span><span class="r-title"><span class="nm">${esc(r.desc||"—")}</span>${r.rever?`<span class="pill p-fa">A rever</span>`:""}</span><span class="r-sub n">saldo ${nf2.format(r._saldo)} €</span></span><span class="r-amt"><b class="${r.val<0?"neg":"pos"}">${r.val>0?"+":""}${nf2.format(r.val)}</b></span></button>`; };
   return header("Banco","Movimentos e saldo acumulado",yearSel())
     + `<div class="tools"><div class="seg">${["Principal","Avença"].map(c=>`<button data-conta="${c}" aria-pressed="${c===conta}">${c}</button>`).join("")}</div></div>
     <div class="kpis" style="margin-bottom:12px"><div class="kpi hero"><span class="lbl">Saldo atual</span><span class="v">${eur(s)}</span><span class="h">conta ${conta}</span></div><div class="kpi"><span class="lbl">Entradas</span><span class="v pos">${eur0(ent)}</span></div><div class="kpi"><span class="lbl">Saídas</span><span class="v neg">${eur0(sai)}</span></div></div>`
@@ -1102,7 +1140,8 @@ function vExportar(){
   if (!dl) return header("Exportar","")+`<div class="card">A exportação não está disponível nesta vista.</div>`;
   return header("Exportar","Ficheiros para abrir no Sheets, no Excel ou no calendário.") + `<div class="menu">${[["servicos","Serviços (.csv)"],["compras","Compras (.csv)"],["movimentos","Banco (.csv)"],["clientes","Clientes (.csv)"],["agenda","Agenda (.ics)"]].map(([k,l])=>`<button data-export="${k}">${svgI(k==="agenda"?"agenda":"exportar")}${l}</button>`).join("")}${dl&&dl.native?`<button data-calsel>${svgI("agenda")}Calendário do iPhone para as marcações</button>`:""}${portal?`<button data-portal>${svgI("clientes")}Atualizar área de cliente</button>`:""}</div>`;
 }
-function csv(rows){ return "﻿"+rows.map(r=>r.map(v=>{ if (typeof v==="number") return String(r2(v)).replace(".",","); const s=String(v??""); return /[;"\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }).join(";")).join("\r\n"); }
+// MCW-10: texto começado por = + - @ (ou tabulação/CR) leva um apóstrofo, para não ser lido como fórmula na folha de cálculo
+function csv(rows){ return "﻿"+rows.map(r=>r.map(v=>{ if (typeof v==="number") return String(r2(v)).replace(".",","); let s=String(v??""); if (/^[=+\-@\t\r]/.test(s)) s="'"+s; return /[;"\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }).join(";")).join("\r\n"); }
 async function save(filename,data){ if (!dl){ toast("A descarga não está disponível nesta vista."); return; } try { await dl.save({filename,data}); } catch(e){ if (!e||e.code!=="declined") toast(e&&e.code==="rejected_extension"?"Este tipo de ficheiro não pode ser descarregado aqui.":"Não foi possível gerar o ficheiro."); } }
 async function exportar(k){
   if (k==="agenda") return save(`agenda-clean-wolf-${today()}.ics`, ics(list("servicos").filter(r=>est(r)!=="entregue"||r.d>=today())));
@@ -1134,7 +1173,7 @@ function ics(rows){
 /* ============ orçamento PDF ============ */
 function orcamentoPDF(f, c){
   const J=window.jspdf&&window.jspdf.jsPDF; if (!J){ toast("O gerador de PDF não carregou. Verifique a ligação."); return; }
-  const doc=new J({unit:"mm",format:"a4"}); const cli=clientByName(f.cli)||{};
+  const doc=new J({unit:"mm",format:"a4"}); const cli=clientOf(f)||{};
   const W=210, M=18; let y=18;
   try { doc.addImage(LOGO_DARK,"PNG",M,y,30,26); } catch(e){}
   doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.setTextColor(142,92,28); doc.text("MR",M+34,y+9);
@@ -1191,17 +1230,32 @@ document.addEventListener("keydown",e=>{ if (!sugBox||e.target!==sugIn) return; 
   if (e.key==="ArrowDown"||e.key==="ArrowUp"){ e.preventDefault(); sugIdx=(sugIdx+(e.key==="ArrowDown"?1:-1)+bs.length)%bs.length; bs.forEach((b,k)=>b.classList.toggle("on",k===sugIdx)); bs[sugIdx].scrollIntoView({block:"nearest"}); }
   else if (e.key==="Enter" && sugIdx>=0){ e.preventDefault(); sugPick(bs[sugIdx].dataset.v); }
   else if (e.key==="Escape") sugClose(); });
-let sheetClose=null;
+let sheetClose=null, sheetDismiss=null;
 function openSheet(title, body, foot, onMount, wide){
   const host=$("#sheet-host"), app=$(".app");
   host.innerHTML=`<div class="scrim" id="scrim"><div class="sheet ${wide?"wide":""}" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="sh-h"><h2>${esc(title)}</h2><button class="x" id="sh-x" aria-label="Fechar">×</button></div><form class="sh-b" id="sh-form" novalidate>${body}</form><div class="sh-f">${foot}</div></div></div>`;
   app.classList.add("lock");
-  const close=()=>{ sugClose(); host.innerHTML=""; sheetClose=null; app.classList.remove("lock"); };
+  const close=()=>{ sugClose(); host.innerHTML=""; sheetClose=null; app.classList.remove("lock"); const h=sheetDismiss; sheetDismiss=null; if (h) h(); };
+  { const h=sheetDismiss; sheetDismiss=null; if (h) h(); }   // folha anterior substituída sem ser fechada
   sheetClose=close; $("#sh-x").onclick=close; $("#scrim").addEventListener("click",e=>{ if (e.target.id==="scrim") close(); });
   $("#sh-form").addEventListener("submit",e=>e.preventDefault());
   onMount&&onMount(close);
 }
 const delBtn = ex => ex?`<button class="btn dng" type="button" id="sh-del">Apagar</button>`:"";
+/* MCW-05/C-03: fotografias de uma ficha em edição. Remover só marca; o ficheiro é apagado depois de gravar.
+   As fotografias carregadas numa edição que não chega a ser gravada são apagadas ao fechar. */
+function fotosPendentes(orig){
+  const ini=new Set((orig||[]).filter(p=>p&&p.id).map(p=>p.id)), novas=new Set(), removidas=new Set(); let gravado=false;
+  const apagar=ids=>{ if (!assets) return; for (const i of ids) assets.delete(i).catch(()=>{}); };
+  sheetDismiss=()=>{ if (!gravado) apagar(novas); };
+  return {
+    nova(p){ if (p&&p.id) novas.add(p.id); },
+    remover(p){ if (!p||!p.id) return; if (novas.has(p.id)){ novas.delete(p.id); apagar([p.id]); } else if (ini.has(p.id)) removidas.add(p.id); },
+    gravou(){ gravado=true; },                    // chamado antes de fechar a folha
+    confirmou(){ apagar(removidas); },            // chamado depois de a gravação ter sucesso
+    apagouRegisto(fotos){ gravado=true; apagar([...ini,...novas]); }
+  };
+}
 function wireDelete(fn){ const b=$("#sh-del"); if (!b) return; b.onclick=()=>{ if (b.classList.contains("sure")) fn(); else { b.classList.add("sure"); b.textContent="Confirmar apagar"; setTimeout(()=>{ if (b.isConnected){ b.classList.remove("sure"); b.textContent="Apagar"; } },4000); } }; }
 const dlist=(id,vals)=>`<datalist id="${id}">${[...new Set(vals.filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt")).map(v=>`<option value="${esc(v)}"></option>`).join("")}</datalist>`;
 
@@ -1215,9 +1269,9 @@ async function shrink(file){
 /* ---------- serviço ---------- */
 function editServico(id, preset){
   const ex=id?S.servicos[id]:null; preset=preset||{};
-  const f = ex ? { d:ex.d, hora:ex.hora||"", estado:est(ex), cli:ex.cli, viatura:ex.viatura||"", matricula:ex.matricula||"", cat:ex.cat||"C", sv:[...(ex.sv||[])], extra:+ex.extra||0,
+  const f = ex ? { d:ex.d, hora:ex.hora||"", estado:est(ex), cli:ex.cli, cliId:(clientOf(ex)||{})._id||"", viatura:ex.viatura||"", matricula:ex.matricula||"", cat:ex.cat||"C", sv:[...(ex.sv||[])], extra:+ex.extra||0,
       extras:(ex.extras||[]).map(x=>({nome:x.nome,valor:x.valor})), descTipo:ex.descTipo||(ex.descPct?"manual":""), descManual:+ex.descPct||0, notas:ex.notas||"", fotos:[...(ex.fotos||[])], vis:ex.visivelCliente!==false, fatManual:null }
-    : { d:preset.d||today(), hora:preset.hora||"09:00", estado:preset.estado||"agendado", cli:preset.cli||"", viatura:preset.viatura||"", matricula:preset.matricula||"", cat:"C", sv:preset.sv&&preset.sv.length?[...preset.sv]:["ext","int"], extra:0, extras:[], descTipo:defaultDesc(preset.cli||""), descManual:0, notas:preset.notas||"", fotos:[], vis:true, fatManual:null };
+    : { d:preset.d||today(), hora:preset.hora||"09:00", estado:preset.estado||"agendado", cli:preset.cli||"", cliId:preset.cliId||(clientByName(preset.cli)||{})._id||"", viatura:preset.viatura||"", matricula:preset.matricula||"", cat:"C", sv:preset.sv&&preset.sv.length?[...preset.sv]:["ext","int"], extra:0, extras:[], descTipo:defaultDesc(preset.cli||""), descManual:0, notas:preset.notas||"", fotos:[], vis:true, fatManual:null };
   if (ex && Math.round(+ex.total||0)+extrasSum(ex)!==(+ex.fat||0)) f.fatManual=+ex.fat||0;
   let dirty=!ex;
   const groups=[...new Set(SV.map(s=>s.g))], tab=()=>((S.cfg||{}).precos||{})[f.cat]||{};
@@ -1232,6 +1286,7 @@ function editServico(id, preset){
     <div class="two"><label class="fld"><span class="lbl">Data</span><input type="date" id="f-d" value="${esc(f.d)}"></label><label class="fld"><span class="lbl">Hora</span><input type="time" id="f-h" value="${esc(f.hora)}"></label></div>
     <div class="sec-a"><button class="btn sm" type="button" id="sh-ics">${svgI("agenda")} Adicionar ao calendário</button><button class="btn sm" type="button" id="sh-sms-m">${svgI("clientes")} Enviar ao cliente por SMS</button></div>`)
   + sec(2,"Cliente e viatura",`<label class="fld"><span class="lbl">Cliente</span><input id="f-cli" data-sug="dl-cli" value="${esc(f.cli)}" placeholder="Nome" autocomplete="off"></label>
+    <label class="fld" id="f-cliq-w" hidden><span class="lbl">Há mais de um cliente com este nome: escolha pelo NIF</span><select id="f-cliq"></select></label>
     ${dlist("dl-cli",list("clientes").filter(c=>!c.arquivado).map(c=>c.nome))}
     <div class="two"><label class="fld"><span class="lbl">Viatura</span><input id="f-via" data-sug="dl-via" value="${esc(f.viatura)}" placeholder="Marca e modelo"></label><label class="fld"><span class="lbl">Matrícula</span><input id="f-mat" value="${esc(f.matricula)}" placeholder="AA-00-AA" autocapitalize="characters"></label></div>
     ${dlist("dl-via",[...list("servicos").map(r=>r.viatura),...list("clientes").flatMap(c=>(c.viaturas||[]).map(v=>v.viatura))])}
@@ -1280,23 +1335,34 @@ function editServico(id, preset){
     $("#f-dt").onchange=e=>{ f.descTipo=e.target.value; $("#f-dm-w").hidden=f.descTipo!=="manual"; touch(); };
     $("#f-dm").oninput=e=>{ f.descManual=numIn(e.target.value)/100; touch(); };
     if ($("#f-extra")) $("#f-extra").oninput=e=>{ f.extra=numIn(e.target.value); touch(); };
-    $("#f-cli").addEventListener("change",e=>{ if (!ex){ f.cli=e.target.value.trim(); f.descTipo=defaultDesc(f.cli); $("#f-dt").value=f.descTipo; $("#f-dm-w").hidden=f.descTipo!=="manual"; const last=list("servicos").filter(r=>r.cli===f.cli&&r.viatura).sort(byDateDesc)[0]||((clientByName(f.cli)||{}).viaturas||[])[0]; if (last){ if (!$("#f-via").value) $("#f-via").value=last.viatura; if (!$("#f-mat").value) $("#f-mat").value=last.matricula||""; if (last.cat){ f.cat=last.cat; $("#f-cat").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x.dataset.cat===f.cat)); $("#f-svs").innerHTML=svHtml(); } } touch(); } });
+    $("#f-cli").addEventListener("change",e=>{ f.cli=e.target.value.trim(); cliQ(); if (!ex){ f.descTipo=defaultDesc(f.cli,f.cliId); $("#f-dt").value=f.descTipo; $("#f-dm-w").hidden=f.descTipo!=="manual"; const ck=f.cliId&&S.clientes[f.cliId], last=(ck?list("servicos").filter(doCliente(ck)):list("servicos").filter(r=>r.cli===f.cli)).filter(r=>r.viatura).sort(byDateDesc)[0]||((ck||{}).viaturas||[])[0]; if (last){ if (!$("#f-via").value) $("#f-via").value=last.viatura; if (!$("#f-mat").value) $("#f-mat").value=last.matricula||""; if (last.cat){ f.cat=last.cat; $("#f-cat").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x.dataset.cat===f.cat)); $("#f-svs").innerHTML=svHtml(); } } touch(); } });
     fatIn.oninput=e=>{ f.fatManual=e.target.value.trim()===""?null:numIn(e.target.value); paint(); };
     const ph=$("#f-ph");
-    ph.addEventListener("click",e=>{ const b=e.target.closest("[data-pdel]"); if(!b) return; const [p]=f.fotos.splice(+b.dataset.pdel,1); ph.innerHTML=phHtml(); if (assets&&p&&p.id) assets.delete(p.id).catch(()=>{}); });
+    const fp=fotosPendentes(f.fotos); const fotosGravadas=()=>fp.confirmou();
+    /* MCW-01: com nomes repetidos, o cliente escolhe-se pelo NIF (R3: logo abaixo do nome) */
+    const cliQ=()=>{ const cs=clientesComNome(f.cli), w=$("#f-cliq-w"), sel=$("#f-cliq");
+      if (cs.length===1) f.cliId=cs[0]._id; else if (!cs.some(c=>c._id===f.cliId)) f.cliId="";
+      w.hidden=cs.length<2; if (cs.length<2) return;
+      sel.innerHTML=`<option value="">Escolher…</option>`+cs.map(c=>`<option value="${esc(c._id)}" ${c._id===f.cliId?"selected":""}>NIF ${esc(fmtNif(c.nif)||"sem NIF")} · ${esc(c.tel?fmtTel(c.tel):c.email||"n.º "+(c.cod||"—"))}${c.arquivado?" · arquivado":""}</option>`).join(""); };
+    $("#f-cliq").addEventListener("change",e=>{ f.cliId=e.target.value; if (!ex){ f.descTipo=defaultDesc(f.cli,f.cliId); $("#f-dt").value=f.descTipo; $("#f-dm-w").hidden=f.descTipo!=="manual"; } });
+    $("#f-cli").addEventListener("input",e=>{ f.cli=e.target.value.trim(); cliQ(); });
+    cliQ();
+    ph.addEventListener("click",e=>{ const b=e.target.closest("[data-pdel]"); if(!b) return; const [p]=f.fotos.splice(+b.dataset.pdel,1); ph.innerHTML=phHtml(); fp.remover(p); });   // MCW-05
     ph.addEventListener("change",async e=>{ if (e.target.id!=="f-photo"||!assets) return; const files=[...e.target.files]; if (!files.length) return; toast("A carregar fotografias…");
-      window.__photoFolder=(clientByName($("#f-cli").value)||{})._id||"geral";
-      for (const file of files){ try { const blob=await shrink(file); const r=await assets.upload(blob,{type:"image/jpeg"}); f.fotos.push({id:r.id,url:r.url}); } catch(err){ console.error(err); toast("Uma fotografia não foi carregada."); } }
+      window.__photoFolder=f.cliId||(clientByName($("#f-cli").value)||{})._id||"geral";
+      for (const file of files){ try { const blob=await shrink(file); const r=await assets.upload(blob,{type:"image/jpeg"}); const p={id:r.id,url:r.url}; f.fotos.push(p); fp.nova(p); } catch(err){ console.error(err); toast("Uma fotografia não foi carregada."); } }
       ph.innerHTML=phHtml(); toast("Fotografias carregadas. Guarde o serviço."); });
     paint();
     const collect=()=>{ f.d=$("#f-d").value; f.hora=$("#f-h").value; f.cli=$("#f-cli").value.trim(); f.viatura=$("#f-via").value.trim(); f.matricula=$("#f-mat").value.trim().toUpperCase(); f.notas=$("#f-notas").value; f.vis=$("#f-vis").checked; };
     $("#sh-pdf").onclick=()=>{ collect(); orcamentoPDF(f, dirty?calcServico(f):current()); };
     $("#sh-sms-m").onclick=()=>{ collect(); smsMarcacao(Object.assign({_id:id||""},f)); };
     $("#sh-ics").onclick=()=>{ collect(); const c=current(); save(`agendamento-${today()}.ics`, ics([Object.assign({_id:id||newId("t")},f,{fat:c.fat})])); };
-    wireDelete(async()=>{ close(); try { await delItem("servicos",id); queuePortal(ex.cli); toast("Serviço apagado."); } catch(e){ writeErr(e); } });
+    wireDelete(async()=>{ fp.gravou(); close(); try { await delItem("servicos",id); fp.apagouRegisto(); queuePortal(ex.cliId||ex.cli);
+      const m=await movRefApagar(id); toast("Serviço apagado."+m); } catch(e){ writeErr(e); } });
     $("#sh-save").onclick=async()=>{
       collect();
       if (!f.d){ toast("Indique a data."); return; } if (!f.cli){ toast("Indique o cliente."); return; }
+      if (clientesComNome(f.cli).length>1 && !f.cliId){ toast("Há mais de um cliente com este nome: escolha-o pelo NIF."); $("#f-cliq").focus(); return; }
       if (!f.sv.length && !f.extras.length && !f.extra){ toast("Escolha pelo menos um serviço."); return; }
       const c=current(), extras=f.extras.filter(x=>x.nome||x.valor).map(x=>({nome:x.nome.trim(),valor:r2(x.valor)}));
       const rec=Object.assign({}, ex?clean(ex):{}, { d:f.d, hora:f.hora, estado:f.estado, cli:f.cli, viatura:f.viatura, matricula:f.matricula, cat:f.cat, sv:f.sv, extra:r2(f.extra), extras,
@@ -1304,22 +1370,41 @@ function editServico(id, preset){
       if (!ex||!ex.orig){ rec.margem=c.margem; rec.rl=c.rl; rec.custo=c.custo; rec.horas=c.horas; }
       if (f.estado==="entregue" && !(rec.fatura&&rec.fatura.estado)) rec.fatura={estado:"por_emitir"};
       if (f.estado!=="entregue" && rec.fatura && rec.fatura.estado==="por_emitir") delete rec.fatura;
-      const rid=id||newId("s"); close();
+      const rid=id||newId("s"); fp.gravou(); close();
       try {
-        await putItem("servicos",rid,rec); queuePortal(f.cli); if (ex && ex.cli!==f.cli) queuePortal(ex.cli);
-        if (!clientByName(f.cli)){ const cod=Math.max(0,...list("clientes").map(x=>+x.cod||0))+1; await putItem("clientes",newId("k"),{cod,nome:f.cli,nif:"",email:"",tel:"",familia:false}); }
-        else { const ck=clientByName(f.cli); if (ck.arquivado && (!ex || ex.cli!==f.cli)) await arquivarCliente(ck._id,false); }
+        let ck=f.cliId&&S.clientes[f.cliId]||clientByName(f.cli), novo=null;
+        if (!ck){ const cod=Math.max(0,...list("clientes").map(x=>+x.cod||0))+1; novo=newId("k"); ck={_id:novo}; }
+        rec.cliId=ck._id;   // MCW-01
+        await putItem("servicos",rid,rec); fotosGravadas();
+        const mv=ex&&ex.fatura&&ex.fatura.estado==="emitida"&&ex.pago&&r2(ex.fat)!==rec.fat ? await movRefAtualizar(rid,r2(ex.fat),rec.fat,null) : "";   // MCW-06
+        if (novo) await putItem("clientes",novo,{cod:Math.max(0,...list("clientes").map(x=>+x.cod||0))+1,nome:f.cli,nif:"",email:"",tel:"",familia:false});
+        else if (ck.arquivado && (!ex || ex.cli!==f.cli)) await arquivarCliente(ck._id,false);
+        queuePortal(rec.cliId); if (ex && (ex.cliId||ex.cli)!==rec.cliId) queuePortal(ex.cliId||ex.cli);
         if (!ex && preset.pedido && pedidosApi){ try { await pedidosApi.update(preset.pedido,{estado:"aceite",servico_id:rid}); PED=PED.filter(x=>x.id!==preset.pedido); schedule(); } catch(err){ console.error(err); toast("Serviço marcado, mas o pedido não foi atualizado."); return; } }
-        toast(ex?"Serviço atualizado.":preset.pedido?"Pedido aceite e serviço marcado.":"Serviço marcado.");
+        toast((ex?"Serviço atualizado.":preset.pedido?"Pedido aceite e serviço marcado.":"Serviço marcado.")+mv);
       } catch(e){ writeErr(e); }
     };
   }, true);
+}
+/* MCW-06: movimento do banco criado a partir de uma compra ou de um serviço pago (campo ref).
+   Só é alterado automaticamente se ainda tiver o valor com que foi criado; se foi mexido à mão, fica como está e é dado aviso. */
+const movsRef = ref => list("movimentos").filter(m=>m.ref===ref);
+async function movRefAtualizar(ref,valAntigo,valNovo,dNova){
+  const ms=movsRef(ref); if (!ms.length) return "";
+  const ok=ms.filter(m=>r2(m.val)===r2(valAntigo)); if (ok.length!==1) return " O movimento no banco não foi alterado (foi editado à mão): reveja-o.";
+  const m=ok[0], rec=Object.assign(clean(m),{val:r2(valNovo)}); if (dNova) rec.d=dNova;
+  await putItem("movimentos",m._id,rec); return " Movimento no banco atualizado.";
+}
+async function movRefApagar(ref){
+  const ms=movsRef(ref); if (!ms.length) return "";
+  try { for (const m of ms) await delItem("movimentos",m._id); return ms.length===1?" O movimento no banco também foi apagado.":` Os ${ms.length} movimentos no banco também foram apagados.`; }
+  catch(e){ console.error(e); return " Não foi possível apagar o movimento no banco: apague-o à mão."; }
 }
 async function setEstado(id, estado){
   const r=S.servicos[id]; if (!r) return;
   const rec=Object.assign(clean(r),{estado});
   if (estado==="entregue" && !(rec.fatura&&rec.fatura.estado)) rec.fatura={estado:"por_emitir"};
-  try { await putItem("servicos",id,rec); queuePortal(r.cli); toast(estado==="entregue"?"Entregue. Passou para as faturas a emitir.":"Em tratamento."); } catch(e){ writeErr(e); }
+  try { await putItem("servicos",id,rec); queuePortal(r.cliId||r.cli); toast(estado==="entregue"?"Entregue. Passou para as faturas a emitir.":"Em tratamento."); } catch(e){ writeErr(e); }
 }
 function emitFatura(id){
   const r=S.servicos[id]; if (!r) return;
@@ -1337,7 +1422,7 @@ function emitFatura(id){
   });
 }
 async function copyFatura(id){
-  const r=S.servicos[id], c=clientByName(r.cli)||{};
+  const r=S.servicos[id], c=clientOf(r)||{};
   const txt=`Cliente: ${r.cli}\nNIF: ${c.nif||""}\nData: ${fmtD(r.d)}\nDescrição: ${descricaoFatura(r)}\nValor: ${nf2.format(r.fat)} €`;
   try { await navigator.clipboard.writeText(txt); toast("Dados copiados. Cole no programa de faturação."); }
   catch(e){ openSheet("Dados para a fatura",`<textarea class="search" style="min-height:160px;padding:12px" readonly>${esc(txt)}</textarea>`,`<span class="sp"></span><button class="btn" type="button" id="sh-cancel">Fechar</button>`,close=>{ $("#sh-cancel").onclick=close; const t=$("#sh-form textarea"); t.focus(); t.select(); }); }
@@ -1346,7 +1431,7 @@ async function copyFatura(id){
 /* ---------- ficha de cliente ---------- */
 function openCliente(cid){
   const c=S.clientes[cid]; if (!c) return;
-  const svc=list("servicos").filter(r=>r.cli===c.nome).sort(byDateDesc);
+  const svc=list("servicos").filter(doCliente(c)).sort(byDateDesc);
   const fat=svc.reduce((a,r)=>a+(+r.fat||0),0), rl=svc.reduce((a,r)=>a+resOf(r),0);
   const vias=viasDe(c);
   const body=`${c.arquivado?`<p class="note"><b>Cliente arquivado</b>${c.arquivadoEm?" em "+fmtD(c.arquivadoEm):""}. Não aparece na lista nem nas sugestões; o histórico mantém-se.</p>`:""}<div class="kpis" style="grid-template-columns:repeat(3,minmax(0,1fr))"><div class="kpi"><span class="lbl">Serviços</span><span class="v">${svc.length}</span></div><div class="kpi"><span class="lbl">Faturado</span><span class="v">${eur0(fat)}</span></div><div class="kpi"><span class="lbl">Resultado</span><span class="v gold">${eur0(rl)}</span></div></div>
@@ -1363,7 +1448,7 @@ function openCliente(cid){
     $("#c-arq").onclick=async()=>{ close(); try { await arquivarCliente(cid,!c.arquivado); toast(c.arquivado?"Cliente reposto na lista.":"Cliente arquivado."); } catch(e){ writeErr(e); } };
     $("#c-sms").onclick=()=>smsAcesso(c);
     $("#c-dados").onclick=()=>smsDados(c);
-    $("#c-new").onclick=()=>{ close(); editServico(null,{cli:c.nome}); };
+    $("#c-new").onclick=()=>{ close(); editServico(null,{cli:c.nome,cliId:c._id}); };
     $("#sh-form").addEventListener("click",e=>{ const b=e.target.closest("[data-edit]"); if (!b) return; close(); editServico(b.dataset.edit.split(":")[1]); });
   }, true);
 }
@@ -1383,15 +1468,23 @@ function editCliente(id){
   const vRow=(v,i)=>`<div style="display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) 44px;gap:8px"><input data-vv="${i}" value="${esc(v.viatura)}" placeholder="Marca e modelo" data-sug="dl-via" autocomplete="off"><input data-vm="${i}" value="${esc(v.matricula)}" placeholder="AA-00-AA" autocapitalize="characters"><button class="btn sm" type="button" data-vdel="${i}" aria-label="Remover viatura">×</button></div>`;
   openSheet(ex?"Editar cliente":"Novo cliente", body + dlist("dl-via",[...list("servicos").map(r=>r.viatura),...list("clientes").flatMap(c=>(c.viaturas||[]).map(v=>v.viatura))]), `${delBtn(!!ex)}<span class="sp"></span><button class="btn" type="button" id="sh-cancel">Cancelar</button><button class="btn pri" type="button" id="sh-save">Guardar</button>`, close=>{
     $("#sh-cancel").onclick=close;
-    wireDelete(async()=>{ close(); try { await delItem("clientes",id); toast("Cliente apagado."); } catch(e){ writeErr(e); } });
+    wireDelete(async()=>{ close(); try { await delItem("clientes",id);
+      let aviso="";   // MCW-02: apagar a ficha retira também o resumo da área de cliente
+      if (portal && portal.remove){ try { await portal.remove(id); } catch(e){ console.error("portal",e); aviso=" Não foi possível retirar a área de cliente; tente de novo mais tarde."; } }
+      toast("Cliente apagado."+aviso); } catch(e){ writeErr(e); } });
     const vbox=$("#k-vias"), vdraw=()=>{ vbox.innerHTML=vs.map(vRow).join("")||`<span class="note">Sem viaturas registadas na ficha.</span>`; };
     vdraw();
     $("#k-vadd").onclick=()=>{ vs.push({viatura:"",matricula:""}); vdraw(); vbox.querySelector(`[data-vv="${vs.length-1}"]`).focus(); };
     vbox.addEventListener("input",e=>{ const t=e.target; if (t.dataset.vv!=null) vs[+t.dataset.vv].viatura=t.value; if (t.dataset.vm!=null) vs[+t.dataset.vm].matricula=t.value; });
     vbox.addEventListener("click",e=>{ const b=e.target.closest("[data-vdel]"); if (!b) return; vs.splice(+b.dataset.vdel,1); vdraw(); });
     $("#sh-save").onclick=async()=>{ const nome=$("#k-nome").value.trim(); if (!nome){ toast("Indique o nome."); return; }
+      const nifN=nifKey($("#k-nif").value), dupl=nifN&&list("clientes").find(c=>c._id!==id && nifKey(c.nif)===nifN);   // MCW-01: o NIF identifica o cliente
+      if (dupl){ toast(`Já existe um cliente com este NIF: ${dupl.nome} (n.º ${dupl.cod||"—"}).`); return; }
       const rec=Object.assign({},ex?clean(ex):{},{cod:parseInt($("#k-cod").value,10)||cod,nome,nif:$("#k-nif").value.trim(),tel:$("#k-tel").value.trim(),email:$("#k-email").value.trim(),morada:$("#k-morada").value.trim(),viaturas:vs.map(v=>({viatura:v.viatura.trim(),matricula:v.matricula.trim().toUpperCase()})).filter(v=>v.viatura||v.matricula),descTipo:$("#k-desc").value,familia:$("#k-desc").value==="familia"});
-      const rid=id||newId("k"); close(); try { await putItem("clientes",rid,rec); queuePortal(nome); toast(ex?"Cliente atualizado.":"Cliente criado."); } catch(e){ writeErr(e); } };
+      const ids=ex&&ex.nome!==nome ? list("servicos").filter(doCliente(ex)).map(r=>r._id) : [];   // calculado antes de gravar a ficha
+      const rid=id||newId("k"); close(); try { await putItem("clientes",rid,rec);
+        if (ids.length) await patchItems("servicos",ids,r=>{ r.cli=nome; r.cliId=rid; });   // C-01: a mudança de nome acompanha os serviços
+        queuePortal(rid); toast(ex?"Cliente atualizado.":"Cliente criado."); } catch(e){ writeErr(e); } };
   });
 }
 
@@ -1445,22 +1538,24 @@ function editCompra(id){
     pl.addEventListener("click",e=>{ const b=e.target.closest("[data-pdl]"); if (!b) return; itens.splice(+b.dataset.pdl,1); draw(); conta(); });
     val.addEventListener("input",()=>{ auto=Math.abs(r2(numIn(val.value))-soma())<0.005; conta(); });
     const ph=$("#c-ph");
-    ph.addEventListener("click",e=>{ const b=e.target.closest("[data-pdel]"); if(!b) return; const [p]=fotos.splice(+b.dataset.pdel,1); ph.innerHTML=phHtml(); if (assets&&p&&p.id) assets.delete(p.id).catch(()=>{}); });
-    ph.addEventListener("change",async e=>{ if (e.target.id!=="c-photo"||!assets) return; const file=e.target.files[0]; if (!file) return; try { window.__photoFolder="compras"; const r=await assets.upload(await shrink(file),{type:"image/jpeg"}); fotos.push({id:r.id,url:r.url}); ph.innerHTML=phHtml(); } catch(err){ toast("A fotografia não foi carregada."); } });
+    const fp=fotosPendentes(fotos);
+    ph.addEventListener("click",e=>{ const b=e.target.closest("[data-pdel]"); if(!b) return; const [p]=fotos.splice(+b.dataset.pdel,1); ph.innerHTML=phHtml(); fp.remover(p); });   // MCW-05
+    ph.addEventListener("change",async e=>{ if (e.target.id!=="c-photo"||!assets) return; const file=e.target.files[0]; if (!file) return; try { window.__photoFolder="compras"; const r=await assets.upload(await shrink(file),{type:"image/jpeg"}); const p={id:r.id,url:r.url}; fotos.push(p); fp.nova(p); ph.innerHTML=phHtml(); } catch(err){ toast("A fotografia não foi carregada."); } });
     $("#sh-cancel").onclick=close;
-    wireDelete(async()=>{ close(); try { await delItem("compras",id); toast("Compra apagada."); } catch(e){ writeErr(e); } });
+    wireDelete(async()=>{ fp.gravou(); close(); try { await delItem("compras",id); fp.apagouRegisto(); const m=await movRefApagar(id); toast("Compra apagada."+m); } catch(e){ writeErr(e); } });
     $("#sh-save").onclick=async()=>{
       const lin=itens.map(i=>({q:numIn(i.q)||1,nome:i.nome.trim(),preco:r2(numIn(i.preco))})).filter(i=>i.nome||i.preco);
       if (lin.some(i=>!i.nome)){ toast("Indique o nome de cada produto (ou remova a linha)."); return; }
       const d=$("#c-d").value, loja=$("#c-loja").value.trim(), nota=$("#c-nota").value.trim();
       let v=r2(numIn(val.value)); if (!v && lin.length) v=soma();
       if (!d||!v||!loja){ toast("Preencha data, loja e montante (ou os preços dos produtos)."); return; }
-      const bank=!ex&&$("#c-bank").checked, rid=id||newId("c"); close();
-      const rec=Object.assign({},ex?clean(ex):{},{d,loja,val:v,nota,tipo,fotos});
+      const bank=!ex&&$("#c-bank").checked, rid=id||newId("c"); fp.gravou(); close();
+      const rec=Object.assign({},ex?clean(ex):{},{d,loja,val:v,nota,tipo,fotos}); delete rec.rever;   // gravar na ficha conta como revisto
       if (lin.length) rec.itens=lin; else delete rec.itens;
-      try { await putItem("compras",rid,rec);
+      try { await putItem("compras",rid,rec); fp.confirmou();
         if (bank) await putItem("movimentos",newId("b"),{d,desc:"Compras",val:-v,conta:"Principal",ord:Date.now(),ref:rid});
-        toast(ex?"Compra atualizada.":"Compra registada."); } catch(e){ writeErr(e); } };
+        const mv=ex&&(r2(ex.val)!==v||ex.d!==d) ? await movRefAtualizar(rid,-r2(ex.val),-v,d) : "";   // MCW-06
+        toast((ex?"Compra atualizada.":"Compra registada.")+mv); } catch(e){ writeErr(e); } };
   }, true);
 }
 
@@ -1477,7 +1572,7 @@ function editMov(id){
     wireDelete(async()=>{ close(); try { await delItem("movimentos",id); toast("Movimento apagado."); } catch(e){ writeErr(e); } });
     $("#sh-save").onclick=async()=>{ const d=$("#m-d").value, v=r2(Math.abs(numIn($("#m-val").value))), desc=$("#m-desc").value.trim(), conta=$("#m-conta").value;
       if (!d||!v||!desc){ toast("Preencha data, montante e descrição."); return; }
-      const rid=id||newId("b"); close(); try { await putItem("movimentos",rid,Object.assign({},ex?clean(ex):{ord:Date.now()},{d,desc,val:sig*v,conta})); toast("Movimento guardado."); } catch(e){ writeErr(e); } };
+      const rid=id||newId("b"); close(); try { const mrec=Object.assign({},ex?clean(ex):{ord:Date.now()},{d,desc,val:sig*v,conta}); delete mrec.rever; await putItem("movimentos",rid,mrec); toast("Movimento guardado."); } catch(e){ writeErr(e); } };
   });
 }
 
@@ -1573,7 +1668,7 @@ document.addEventListener("keydown",e=>{ if (e.key==="Escape"&&sheetClose) sheet
 window.addEventListener("resize",()=>{ clearTimeout(window.__rz); window.__rz=setTimeout(()=>{ if (ui.tab==="resumo") render(); },200); });
 
 /* ============ helpers para o dashboard (gestao/dashboard.js) ============ */
-window.__cw = { nf1, list, est, recCost, extrasSum, fatEst, stockEstimate, clientByName, openCliente, openSheet, header, esc, eur, eur0, nf0, nf2, fmtD, numIn, niceStep, toast, writeErr, schedule, SVK, MES3, $,
+window.__cw = { nf1, list, est, recCost, extrasSum, fatEst, stockEstimate, clientByName, cliKey, cliNome, clientByKey, openCliente, openSheet, header, esc, eur, eur0, nf0, nf2, fmtD, numIn, niceStep, toast, writeErr, schedule, SVK, MES3, $,
   S:()=>S, CU:()=>CU(), AG:()=>AG, db:()=>db, pedidosApi:()=>pedidosApi };
 
 if (document.readyState==="loading") document.addEventListener("DOMContentLoaded",boot); else boot();
