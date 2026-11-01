@@ -89,7 +89,7 @@ Todas as alterações seguem **[docs/REGRAS-DE-QUALIDADE.md](docs/REGRAS-DE-QUAL
 - MCW-09/E3.3: «Atualizar» só diz «Atualizado» quando os dados vieram do servidor; caso contrário, «a mostrar a última informação guardada».
 - MCW-10: exportação CSV neutraliza texto começado por `=`, `+`, `-`, `@`.
 - E4.5/MCW-04: migração `20261031230000_docs_updated_at_automatico.sql` — gatilho que atualiza `docs.updated_at` em cada gravação, para o controlo otimista detetar também escritores externos. Sem tabelas novas nem alterações de permissões.
-- Cache `cw-gestao-v22`; compilação iOS 7. Depois da integração em `main`: aplicar a migração (`supabase db push --linked`) e publicar de novo a `sheet-sync` (`supabase functions deploy sheet-sync`).
+- Cache `cw-gestao-v22`; compilação iOS 7. Produção a 31/10/2026: integrado em `main` (GitHub Pages publicado); migração `20261031230000` aplicada e registada no histórico (gatilho ativo em `docs`); `sheet-sync` publicada (versão 3, `verify_jwt` desligado como antes — verificação própria de `admins`; sem sessão responde 403). Dados verificados antes: 52 clientes sem nomes nem NIF repetidos; 247 de 252 serviços ligados à ficha automaticamente na primeira abertura (5 sem ficha correspondente, como antes). Avisos de segurança do Supabase sem novidades. Pendente: compilar a versão 7 da app iOS no Xcode.
 - Pendente fora do repositório: a tarefa agendada «Lançar faturas MCW do e-mail» ainda considera duplicado um valor a menos de 1 € (C-02) e grava sem controlo de versão (MCW-04).
 
 ## 4. Última auditoria (E4/E5) — 29/09/2026
