@@ -15,7 +15,7 @@ grant select, insert, update, delete on public.docs, public.admins, public.socia
 
 -- 2. Recolha diária às 05:15 (UTC) — fecha os números do dia anterior.
 create extension if not exists pg_cron;
-create extension if not exists pg_net;
+create extension if not exists pg_net with schema extensions;
 
 select cron.unschedule('mcw-social-sync') where exists (select 1 from cron.job where jobname = 'mcw-social-sync');
 select cron.schedule('mcw-social-sync', '15 5 * * *', $$
