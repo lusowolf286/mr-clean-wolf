@@ -764,7 +764,11 @@ function atualCard(a){ const c=S.clientes[a.cliente_id]||{}, d=a.dados||{};
     <div class="acts"><button class="btn sm pri" data-atu-ok="${esc(a.id)}">Aplicar à ficha</button><button class="btn sm" data-atu-no="${esc(a.id)}">Descartar</button></div></div></div>`; }
 async function atualAplicar(id){ const a=ATU.find(x=>x.id===id); if (!a) return; const c=S.clientes[a.cliente_id];
   if (!c){ toast("A ficha deste cliente já não existe."); return; }
-  const d=a.dados||{}, rec=Object.assign({},clean(c)); for (const [k] of ATU_F) if (d[k]) rec[k]=d[k];
+  const d=a.dados||{};
+  // AI-009-R/MCW-01: o NIF identifica o cliente — não aplicar um NIF que já pertence a outra ficha
+  const nifN=nifKey(d.nif), outro=nifN&&list("clientes").find(x=>x._id!==a.cliente_id && nifKey(x.nif)===nifN);
+  if (outro){ toast(`O NIF indicado já pertence a ${outro.nome} (n.º ${outro.cod||"—"}). A ficha não foi atualizada: confirme os dados com o cliente.`); return; }
+  const rec=Object.assign({},clean(c)); for (const [k] of ATU_F) if (d[k]) rec[k]=d[k];
   if ((d.viaturas||[]).length){ const cur=[...(c.viaturas||[])]; for (const v of d.viaturas){ const i=cur.findIndex(x=>matKey(x.matricula)&&matKey(x.matricula)===matKey(v.matricula)); if (i>=0) cur[i]=Object.assign({},cur[i],{viatura:v.viatura||cur[i].viatura}); else cur.push({viatura:v.viatura||"",matricula:v.matricula||""}); } rec.viaturas=cur; }
   try { await putItem("clientes",a.cliente_id,rec); await atualApi.update(id,"aplicado"); ATU=ATU.filter(x=>x.id!==id); queuePortal(a.cliente_id); schedule(); toast("Ficha atualizada."); } catch(e){ writeErr(e); } }
 async function atualDescartar(id){ try { await atualApi.update(id,"descartado"); ATU=ATU.filter(x=>x.id!==id); schedule(); toast("Resposta descartada."); } catch(e){ writeErr(e); } }
@@ -1245,11 +1249,12 @@ const delBtn = ex => ex?`<button class="btn dng" type="button" id="sh-del">Apaga
 /* MCW-05/C-03: fotografias de uma ficha em edição. Remover só marca; o ficheiro é apagado depois de gravar.
    As fotografias carregadas numa edição que não chega a ser gravada são apagadas ao fechar. */
 function fotosPendentes(orig){
-  const ini=new Set((orig||[]).filter(p=>p&&p.id).map(p=>p.id)), novas=new Set(), removidas=new Set(); let gravado=false;
+  const ini=new Set((orig||[]).filter(p=>p&&p.id).map(p=>p.id)), novas=new Set(), removidas=new Set(); let gravado=false, fechado=false;
   const apagar=ids=>{ if (!assets) return; for (const i of ids) assets.delete(i).catch(()=>{}); };
-  sheetDismiss=()=>{ if (!gravado) apagar(novas); };
+  sheetDismiss=()=>{ fechado=true; if (!gravado) apagar(novas); };
   return {
-    nova(p){ if (p&&p.id) novas.add(p.id); },
+    // AI-009-R/C-03: um carregamento que termina depois de a folha fechar (gravada ou não) já não entra no registo: apaga-se
+    nova(p){ if (!p||!p.id) return; if (fechado) apagar([p.id]); else novas.add(p.id); },
     remover(p){ if (!p||!p.id) return; if (novas.has(p.id)){ novas.delete(p.id); apagar([p.id]); } else if (ini.has(p.id)) removidas.add(p.id); },
     gravou(){ gravado=true; },                    // chamado antes de fechar a folha
     confirmou(){ apagar(removidas); },            // chamado depois de a gravação ter sucesso
@@ -1376,7 +1381,7 @@ function editServico(id, preset){
         if (!ck){ const cod=Math.max(0,...list("clientes").map(x=>+x.cod||0))+1; novo=newId("k"); ck={_id:novo}; }
         rec.cliId=ck._id;   // MCW-01
         await putItem("servicos",rid,rec); fotosGravadas();
-        const mv=ex&&ex.fatura&&ex.fatura.estado==="emitida"&&ex.pago&&r2(ex.fat)!==rec.fat ? await movRefAtualizar(rid,r2(ex.fat),rec.fat,null) : "";   // MCW-06
+        const mv=ex&&ex.fatura&&ex.fatura.estado==="emitida"&&ex.pago&&r2(ex.fat)!==rec.fat ? await movRefAtualizar(rid,r2(ex.fat),rec.fat,null,ex.fatura.data||null) : "";   // MCW-06
         if (novo) await putItem("clientes",novo,{cod:Math.max(0,...list("clientes").map(x=>+x.cod||0))+1,nome:f.cli,nif:"",email:"",tel:"",familia:false});
         else if (ck.arquivado && (!ex || ex.cli!==f.cli)) await arquivarCliente(ck._id,false);
         queuePortal(rec.cliId); if (ex && (ex.cliId||ex.cli)!==rec.cliId) queuePortal(ex.cliId||ex.cli);
@@ -1389,9 +1394,10 @@ function editServico(id, preset){
 /* MCW-06: movimento do banco criado a partir de uma compra ou de um serviço pago (campo ref).
    Só é alterado automaticamente se ainda tiver o valor com que foi criado; se foi mexido à mão, fica como está e é dado aviso. */
 const movsRef = ref => list("movimentos").filter(m=>m.ref===ref);
-async function movRefAtualizar(ref,valAntigo,valNovo,dNova){
+async function movRefAtualizar(ref,valAntigo,valNovo,dNova,dAntiga){
   const ms=movsRef(ref); if (!ms.length) return "";
-  const ok=ms.filter(m=>r2(m.val)===r2(valAntigo)); if (ok.length!==1) return " O movimento no banco não foi alterado (foi editado à mão): reveja-o.";
+  // AI-009-R/MCW-06: só é «não alterado à mão» se mantiver o valor e a data com que foi criado
+  const ok=ms.filter(m=>r2(m.val)===r2(valAntigo) && (!dAntiga || m.d===dAntiga)); if (ok.length!==1) return " O movimento no banco não foi alterado (foi editado à mão): reveja-o.";
   const m=ok[0], rec=Object.assign(clean(m),{val:r2(valNovo)}); if (dNova) rec.d=dNova;
   await putItem("movimentos",m._id,rec); return " Movimento no banco atualizado.";
 }
@@ -1554,7 +1560,7 @@ function editCompra(id){
       if (lin.length) rec.itens=lin; else delete rec.itens;
       try { await putItem("compras",rid,rec); fp.confirmou();
         if (bank) await putItem("movimentos",newId("b"),{d,desc:"Compras",val:-v,conta:"Principal",ord:Date.now(),ref:rid});
-        const mv=ex&&(r2(ex.val)!==v||ex.d!==d) ? await movRefAtualizar(rid,-r2(ex.val),-v,d) : "";   // MCW-06
+        const mv=ex&&(r2(ex.val)!==v||ex.d!==d) ? await movRefAtualizar(rid,-r2(ex.val),-v,d,ex.d) : "";   // MCW-06
         toast((ex?"Compra atualizada.":"Compra registada.")+mv); } catch(e){ writeErr(e); } };
   }, true);
 }
