@@ -103,7 +103,10 @@ async function load(coll: string) {
   return docs;
 }
 const todos = (docs: Map<string, { items: Record<string, Rec> }>) => [...docs.values()].flatMap((d) => Object.entries(d.items).map(([id, r]) => ({ id, ...r })));
-const novoId = (p: string) => p + "gs" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+// AI-009-R: identificador fixo por bloco, linha e conteúdo — duas leituras simultâneas da mesma linha
+// geram o mesmo id e o registo entra uma só vez (acrescentar ignora ids que já existam)
+const fnv = (t: string, seed: number) => { let h = seed >>> 0; for (let i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return h.toString(36); };
+const linhaId = (p: string, bloco: string, i: number, r: Rec) => { const k = [bloco, i, r.d, r.val, r.loja ?? r.desc ?? ""].join("|"); return p + "gs" + fnv(k, 2166136261) + fnv(k, 3735928559); };
 
 async function isAdmin(req: Request) {
   const jwt = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
@@ -121,7 +124,10 @@ async function acrescentar(path: string, itens: Record<string, Rec>) {
     if (error) throw error;
     const agora = new Date().toISOString();
     if (row) {
-      const data = { ...(row.data || {}), items: { ...(row.data?.items || {}), ...itens } };
+      const atuais = row.data?.items || {};
+      const faltam = Object.fromEntries(Object.entries(itens).filter(([id]) => !(id in atuais)));   // nunca substitui um registo existente
+      if (!Object.keys(faltam).length) return;
+      const data = { ...(row.data || {}), items: { ...atuais, ...faltam } };
       const { data: upd, error: e2 } = await SB.from("docs").update({ data, updated_at: agora }).eq("path", path).eq("updated_at", row.updated_at).select("path");
       if (e2) throw e2;
       if (upd && upd.length) return;
@@ -168,7 +174,7 @@ async function sync() {
   };
 
   // linhas de um bloco → registos; na primeira vez, a marca de água é a última linha que já existe na app
-  const bloco = (nome: string, linhas: unknown[][], ler: (r: unknown[]) => Rec | null, existe: (r: Rec) => { id: string } | undefined, usados: Set<string>, gravar: (r: Rec) => void) => {
+  const bloco = (nome: string, linhas: unknown[][], ler: (r: unknown[]) => Rec | null, existe: (r: Rec) => { id: string } | undefined, usados: Set<string>, gravar: (r: Rec, i: number) => void) => {
     const recs = linhas.map((l) => (vazia(l) ? null : ler(l)));
     // MCW-07: linhas que estavam vazias atrás da marca de água e entretanto foram preenchidas
     const aindaVazias: number[] = [];
@@ -180,7 +186,7 @@ async function sync() {
       if (r.val === 0) continue;
       const e = existe(r);
       if (e) { usados.add(e.id); continue; }
-      gravar(r);
+      gravar(r, i);
     }
     // as linhas já tratadas «gastam» o registo da app que lhes corresponde, para que uma linha nova igual
     // (ex.: dois serviços de 45 € no mesmo dia) não seja confundida com uma antiga
@@ -197,7 +203,7 @@ async function sync() {
       if (r.val === 0) continue;   // linhas a zero não interessam
       const e = existe(r);
       if (e) { usados.add(e.id); continue; }
-      gravar(r);
+      gravar(r, i);
     }
     // a marca de água só avança até à última linha preenchida (linhas vazias no fim podem vir a ser preenchidas)
     // e pára antes da primeira linha incompleta, para a apanhar quando for completada (as seguintes não duplicam: já existem)
@@ -213,14 +219,14 @@ async function sync() {
   bloco("compras", folha.compras,
     (l) => { const d = dataISO(l[0]), v = valor(l[2]), loja = String(l[1] ?? "").trim(); return d && v != null ? { d, val: Math.abs(v), loja: loja || "—" } as Rec : null; },
     (r) => mesmoC(r.d, String(r.loja), r.val), usadosC,
-    (r) => { const rv = pareceC(r.d, String(r.loja), r.val); if (rv) rev++;
-      put(compras, "compras", novoId("c"), { ...r, tipo: "consumivel", nota: rv ? "A rever: há uma compra parecida no mesmo dia." : "", origem: "folha", ...(rv ? { rever: true } : {}) }); nC++; });
+    (r, i) => { const rv = pareceC(r.d, String(r.loja), r.val); if (rv) rev++;
+      put(compras, "compras", linhaId("c", "compras", i, r), { ...r, tipo: "consumivel", nota: rv ? "A rever: há uma compra parecida no mesmo dia." : "", origem: "folha", ...(rv ? { rever: true } : {}) }); nC++; });
   for (const [nome, conta, linhas] of [["principal", "Principal", folha.principal], ["avenca", "Avença", folha.avenca]] as const) {
     bloco(nome, linhas,
       (l) => { const d = dataISO(l[0]), v = valor(l[2]), desc = String(l[1] ?? "").trim(); return d && v != null ? { d, val: v, desc: desc || "—", conta } as Rec : null; },
       (r) => mesmoM(r.d, conta, r.val), usadosM,
-      (r) => { const rv = pareceM(r.d, conta, r.val); if (rv) rev++;
-        put(movs, "movimentos", novoId("b"), { ...r, ord: ordBase++, origem: "folha", ...(rv ? { rever: true } : {}) }); nM++; });
+      (r, i) => { const rv = pareceM(r.d, conta, r.val); if (rv) rev++;
+        put(movs, "movimentos", linhaId("b", nome, i, r), { ...r, ord: ordBase++, origem: "folha", ...(rv ? { rever: true } : {}) }); nM++; });
   }
 
   // MCW-04: grava só os registos novos, relendo cada documento e gravando apenas se não mudou entretanto
