@@ -1,5 +1,5 @@
 /* Mr Clean Wolf — funcionamento sem rede (cliente) */
-const V = "cw-cliente-v9";
+const V = "cw-cliente-v10";
 const SHELL = [
   "./",
   "./index.html",

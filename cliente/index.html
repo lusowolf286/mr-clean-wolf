@@ -140,21 +140,23 @@ function login(email, msg, err){
   const go = async () => {
     const e = $("#email").value.trim().toLowerCase(); if (!e) return;
     $("#send").disabled = true;
-    const { error } = await sb.auth.signInWithOtp({ email:e, options:{ shouldCreateUser:true } });
-    if (error) login(e, "Não foi possível enviar o código. Tente de novo dentro de alguns minutos.", true); else code(e);
+    try { const { error } = await sb.auth.signInWithOtp({ email:e, options:{ shouldCreateUser:true } });
+      if (error) login(e, "Não foi possível enviar o código. Tente de novo dentro de alguns minutos.", true); else code(e);
+    } catch (_) { login(e, "Não foi possível estabelecer ligação. Verifique a ligação à Internet e tente de novo.", true); }
   };
   $("#lf").onsubmit = e => { e.preventDefault(); go(); };
 }
-function code(email, err){
+function code(email, err, msg){
   app.innerHTML = `<form class="login" id="cf" novalidate><h1>Código de acesso</h1>
     <p class="sub" style="margin:0">Enviámos um código para ${esc(email)}. Pode demorar um minuto a chegar.</p>
     <label class="fld"><span>Código</span><input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" style="letter-spacing:.3em;font-size:22px;text-align:center"></label>
     <button class="btn" id="ok" type="submit">Entrar</button><button class="btn ghost" id="back" type="button">Usar outro e-mail</button>
-    ${err?`<p class="msg err">Código inválido ou expirado.</p>`:""}</form>`;
+    ${err?`<p class="msg err">${esc(msg||"Código inválido ou expirado.")}</p>`:""}</form>`;
   const go = async () => {
     const token = $("#code").value.replace(/\D/g, ""); if (!token) return;
-    const { error } = await sb.auth.verifyOtp({ email, token, type:"email" });
-    if (error) code(email, true); else load();
+    try { const { error } = await sb.auth.verifyOtp({ email, token, type:"email" });
+      if (error) code(email, true); else load();
+    } catch (_) { code(email, true, "Não foi possível estabelecer ligação. Verifique a ligação à Internet e tente de novo."); }
   };
   $("#cf").onsubmit = e => { e.preventDefault(); go(); };
   $("#back").onclick = () => login(email); $("#code").focus();

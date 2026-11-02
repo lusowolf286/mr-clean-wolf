@@ -97,7 +97,8 @@ Todas as alterações seguem **[docs/REGRAS-DE-QUALIDADE.md](docs/REGRAS-DE-QUAL
 - C-03: uma fotografia cujo carregamento termina depois de a ficha fechar (gravada ou cancelada) é apagada, porque já não entra no registo.
 - MCW-04/sheet-sync: cada linha importada tem um identificador fixo (bloco, linha e conteúdo); duas leituras simultâneas da folha gravam o registo uma só vez, e um registo já existente nunca é substituído.
 - MCW-06: o movimento do banco ligado só é atualizado automaticamente se mantiver o valor e a data com que foi criado.
-- Cache `cw-gestao-v23`; compilação iOS 8. Depois da integração: publicar de novo a `sheet-sync` e compilar a versão 8.
+- Trazido do trabalho local do Codex de 26/10/2026 (stash no Mac), por decisão do dono: E3.5 na área de cliente — falha de rede ao pedir ou verificar o código de acesso mostra mensagem clara e mantém o campo (cache `cw-cliente-v10`); E3.5 na app iOS — a sincronização do calendário conta só as marcações gravadas e indica as que falharam; `supabase/social.sql` com `pg_net` no esquema `extensions` (coerente com a migração de 22/10/2026). O resto desse trabalho (RPC `docs_mutate_item`) fica substituído pela solução integrada.
+- Cache `cw-gestao-v23`; compilação iOS 8 (inclui a alteração ao calendário). Depois da integração: publicar de novo a `sheet-sync` e compilar a versão 8.
 
 ## 4. Última auditoria (E4/E5) — 29/09/2026
 - 20/10/2026, avisos de segurança do Supabase: além dos intencionais (funções *SECURITY DEFINER* do link de dados e `is_admin`; `social_privado` sem regras), havia dois pendentes de decisão, resolvidos a 22/10/2026 — extensão `pg_net` movida para `extensions`; proteção contra palavras-passe divulgadas aceite como não aplicável (plano gratuito, entrada só por código).

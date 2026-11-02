@@ -141,24 +141,26 @@ public class CWNativePlugin: CAPPlugin, CAPBridgedPlugin, EKCalendarChooserDeleg
         withAccess(call) {
             let go: (EKCalendar) -> Void = { cal in
                 var map = UserDefaults.standard.dictionary(forKey: self.mapKey) as? [String: String] ?? [:]
-                var added = 0, updated = 0
+                var added = 0, updated = 0, failed = 0
                 for e in events {
                     guard let start = self.date(e["start"] as? String) else { continue }
                     let uid = e["uid"] as? String ?? UUID().uuidString
                     var ev: EKEvent
-                    if let id = map[uid], let old = self.store.event(withIdentifier: id) { ev = old; updated += 1 }
-                    else { ev = EKEvent(eventStore: self.store); added += 1 }
+                    let wasExisting: Bool
+                    if let id = map[uid], let old = self.store.event(withIdentifier: id) { ev = old; wasExisting = true }
+                    else { ev = EKEvent(eventStore: self.store); wasExisting = false }
                     ev.calendar = cal
                     ev.title = e["title"] as? String ?? "Clean Wolf"
                     ev.notes = e["notes"] as? String
                     ev.location = e["location"] as? String
                     ev.startDate = start
                     ev.endDate = self.date(e["end"] as? String) ?? start.addingTimeInterval(3600)
-                    do { try self.store.save(ev, span: .thisEvent); map[uid] = ev.eventIdentifier } catch { continue }
+                    do { try self.store.save(ev, span: .thisEvent); map[uid] = ev.eventIdentifier; if wasExisting { updated += 1 } else { added += 1 } } catch { failed += 1; continue }
                 }
                 UserDefaults.standard.set(map, forKey: self.mapKey)
-                self.alert("Calendário atualizado", "\(added) marcação(ões) adicionada(s), \(updated) atualizada(s) no calendário «\(cal.title)».")
-                call.resolve(["added": added, "updated": updated, "calendar": cal.title])
+                let falhas = failed > 0 ? " e \(failed) sem gravação" : ""
+                self.alert("Calendário atualizado", "\(added) marcação(ões) adicionada(s), \(updated) atualizada(s)\(falhas) no calendário «\(cal.title)».")
+                call.resolve(["added": added, "updated": updated, "failed": failed, "calendar": cal.title])
             }
             if let cal = self.savedCalendar() { go(cal) }
             else { self.chooseCalendar { cal in if let cal = cal { go(cal) } else { call.resolve(["cancelled": true]) } } }
