@@ -145,6 +145,8 @@ As regras têm um identificador fixo para poderem ser citadas em revisões e men
 
 As referências legais indicam o enquadramento português e europeu em vigor em novembro de 2026 e servem para orientar o trabalho; não substituem aconselhamento jurídico. Quando uma regra depende de interpretação (por exemplo, se um pedido de marcação é um contrato à distância), a app regista no seu `CLAUDE.md` a interpretação adotada e o motivo. Uma regra que não se aplique a uma app (por exemplo, cookies numa app iOS sem web) fica registada como «não aplicável», com a razão.
 
+**Momento de aplicação.** A Parte C é critério obrigatório de lançamento: aplica-se a uma app ou site antes de ser aberto ao público, de ter clientes reais como utilizadores ou de ser submetido a uma loja. Enquanto um projeto está em beta, para uso pessoal do dono, a Parte C não é aplicada; o `CLAUDE.md` do projeto indica «beta, uso pessoal» e a auditoria completa à Parte C é feita na preparação do lançamento. As Partes A, B e D aplicam-se sempre. (Decisão de 03/11/2026: todos os projetos atuais estão em beta.)
+
 ### C1. Política de privacidade
 
 - **L1.1** Toda a app ou site que trate dados pessoais (mesmo que seja só um e-mail, um endereço IP em registos ou fotografias) tem política de privacidade em português. A política fica acessível num toque a partir de qualquer ecrã (rodapé, menu ou ecrã de entrada) e num endereço público, exigido pelas lojas.
